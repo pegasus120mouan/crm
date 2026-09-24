@@ -7,6 +7,7 @@ use App\Http\Controllers\CommandeController;
 use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\CommuneController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [AuthController::class, 'showLoginForm'])->name('login');
@@ -15,6 +16,8 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 
 Route::middleware('commercial')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/profil', [ProfileController::class, 'show'])->name('profil.show');
+    Route::put('/profil', [ProfileController::class, 'update'])->name('profil.update');
     Route::get('/profil/avatar', [AuthController::class, 'avatar'])->name('profil.avatar');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 

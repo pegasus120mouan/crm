@@ -99,37 +99,19 @@
             <div class="navbar-nav-right d-flex align-items-center justify-content-end" id="navbar-collapse">
               <ul class="navbar-nav flex-row align-items-center ms-md-auto">
                 <li class="nav-item navbar-dropdown dropdown-user dropdown">
-                  <a class="nav-link dropdown-toggle hide-arrow p-0" href="javascript:void(0);" data-bs-toggle="dropdown">
+                  <a class="nav-link p-0" href="{{ route('profil.show') }}" title="Mon profil">
                     <div class="avatar avatar-online" style="width: 40px; height: 40px; overflow: hidden;">
                       <img src="{{ $sessionAvatarUrl }}" alt="{{ $sessionUserName }}" class="rounded-circle" style="width: 40px; height: 40px; object-fit: cover;" onerror="this.onerror=null;this.src='{{ asset('assets/img/avatars/1.png') }}';" />
                     </div>
                   </a>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    <li>
-                      <a class="dropdown-item" href="javascript:void(0);">
-                        <div class="d-flex">
-                          <div class="flex-shrink-0 me-3">
-                            <div class="avatar avatar-online" style="width: 40px; height: 40px; overflow: hidden;">
-                              <img src="{{ $sessionAvatarUrl }}" alt="{{ $sessionUserName }}" class="rounded-circle" style="width: 40px; height: 40px; object-fit: cover;" onerror="this.onerror=null;this.src='{{ asset('assets/img/avatars/1.png') }}';" />
-                            </div>
-                          </div>
-                          <div class="flex-grow-1">
-                            <h6 class="mb-0">{{ $sessionUserName }}</h6>
-                            <small class="text-body-secondary">Commercial</small>
-                          </div>
-                        </div>
-                      </a>
-                    </li>
-                    <li><div class="dropdown-divider my-1"></div></li>
-                    <li>
-                      <form method="POST" action="{{ route('logout') }}">
-                        @csrf
-                        <button type="submit" class="dropdown-item">
-                          <i class="icon-base bx bx-power-off icon-md me-3"></i><span>Déconnexion</span>
-                        </button>
-                      </form>
-                    </li>
-                  </ul>
+                </li>
+                <li class="nav-item ms-2">
+                  <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="nav-link btn btn-link p-0 border-0" title="Déconnexion">
+                      <i class="icon-base bx bx-power-off icon-md"></i>
+                    </button>
+                  </form>
                 </li>
               </ul>
             </div>
