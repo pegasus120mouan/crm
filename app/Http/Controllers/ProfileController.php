@@ -82,7 +82,7 @@ class ProfileController extends Controller
         abort_unless($id > 0, 404);
 
         $utilisateur = Utilisateur::query()
-            ->where('role', 'commercial')
+            ->whereIn('role', Utilisateur::ROLES_CRM)
             ->find($id);
 
         abort_unless($utilisateur, 404);

@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Storage;
 
 class Utilisateur extends Model
 {
+    public const ROLES_CRM = ['commercial', 'manager'];
+
     protected $table = 'utilisateurs';
 
     public $timestamps = false;
@@ -81,6 +83,11 @@ class Utilisateur extends Model
     public function scopeActifs($query)
     {
         return $query->where('statut_compte', 1);
+    }
+
+    public static function routeAccueil(?string $role): string
+    {
+        return $role === 'manager' ? 'manager.dashboard' : 'dashboard';
     }
 
     public function avatarKey(): string

@@ -11,8 +11,10 @@ class AuthController extends Controller
 {
     public function showLoginForm()
     {
-        if ($this->isAuthenticatedCommercial()) {
-            return redirect()->route('dashboard');
+        $role = data_get(Session::get('utilisateur'), 'role');
+
+        if (in_array($role, Utilisateur::ROLES_CRM, true)) {
+            return redirect()->route(Utilisateur::routeAccueil($role));
         }
 
         return view('login');
@@ -42,9 +44,9 @@ class AuthController extends Controller
             ])->withInput();
         }
 
-        if ($utilisateur->role !== 'commercial') {
+        if (! in_array($utilisateur->role, Utilisateur::ROLES_CRM, true)) {
             return back()->withErrors([
-                'login' => 'Seuls les commerciaux peuvent se connecter à cet espace.',
+                'login' => 'Seuls les commerciaux et les managers peuvent se connecter à cet espace.',
             ])->withInput();
         }
 
@@ -62,7 +64,7 @@ class AuthController extends Controller
             Session::put('remember', true);
         }
 
-        return redirect()->route('dashboard')->with('success', 'Connexion réussie !');
+        return redirect()->route(Utilisateur::routeAccueil($utilisateur->role))->with('success', 'Connexion réussie !');
     }
 
     public function logout()
@@ -101,12 +103,5 @@ class AuthController extends Controller
         }
 
         abort(404);
-    }
-
-    private function isAuthenticatedCommercial(): bool
-    {
-        $utilisateur = Session::get('utilisateur');
-
-        return is_array($utilisateur) && ($utilisateur['role'] ?? null) === 'commercial';
     }
 }

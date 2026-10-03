@@ -27,6 +27,8 @@
       if ($sessionUserName === '') {
         $sessionUserName = $sessionUser['login'] ?? 'Commercial';
       }
+      $estManager = ($sessionUser['role'] ?? null) === 'manager';
+      $routeAccueil = \App\Models\Utilisateur::routeAccueil($sessionUser['role'] ?? null);
       $sessionAvatarUrl = asset('assets/img/avatars/1.png');
       $sessionUserId = (int) ($sessionUser['id'] ?? 0);
       if ($sessionUserId > 0 && \Illuminate\Support\Facades\Schema::hasTable('utilisateurs')) {
@@ -40,7 +42,7 @@
       <div class="layout-container">
         <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
           <div class="app-brand demo">
-            <a href="{{ route('dashboard') }}" class="app-brand-link">
+            <a href="{{ route($routeAccueil) }}" class="app-brand-link">
               <img src="{{ asset('img/logo/logo.png') }}" alt="OVL CRM" class="app-brand-logo" style="height: 40px; width: auto;" />
             </a>
             <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto">
@@ -50,6 +52,41 @@
           <div class="menu-divider mt-0"></div>
           <div class="menu-inner-shadow"></div>
           <ul class="menu-inner py-1">
+            @if ($estManager)
+            <li class="menu-item {{ request()->routeIs('manager.dashboard') ? 'active' : '' }}">
+              <a href="{{ route('manager.dashboard') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-home-smile"></i>
+                <div class="text-truncate">Tableau de bord</div>
+              </a>
+            </li>
+            <li class="menu-header small text-uppercase">
+              <span class="menu-header-text">Location-vente</span>
+            </li>
+            <li class="menu-item {{ request()->routeIs('manager.livreurs.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.livreurs.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-id-card"></i>
+                <div class="text-truncate">Liste des livreurs</div>
+              </a>
+            </li>
+            <li class="menu-item {{ request()->routeIs('manager.motos.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.motos.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-cycling"></i>
+                <div class="text-truncate">Liste des motos</div>
+              </a>
+            </li>
+            <li class="menu-item {{ request()->routeIs('manager.contrats.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.contrats.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-file"></i>
+                <div class="text-truncate">Contrats</div>
+              </a>
+            </li>
+            <li class="menu-item {{ request()->routeIs('manager.paiements.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.paiements.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-money"></i>
+                <div class="text-truncate">Paiements</div>
+              </a>
+            </li>
+            @else
             <li class="menu-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
               <a href="{{ route('dashboard') }}" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-home-smile"></i>
@@ -86,6 +123,7 @@
                 <div class="text-truncate">Liste des communes</div>
               </a>
             </li>
+            @endif
           </ul>
         </aside>
 

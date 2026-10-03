@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
     <title>Connexion | OVL CRM</title>
-    <meta name="description" content="Espace commercial OVL CRM" />
+    <meta name="description" content="Espace commercial et manager OVL CRM" />
     <link rel="icon" type="image/png" href="{{ asset('img/logo/logo.png') }}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,7 +33,7 @@
                 </a>
               </div>
               <h4 class="mb-1">Bienvenue sur votre espace</h4>
-              <p class="mb-6">Connectez-vous avec votre compte commercial</p>
+              <p class="mb-6">Connectez-vous avec votre compte commercial ou manager</p>
 
               @if (session('success'))
                 <div class="alert alert-success" role="alert">{{ session('success') }}</div>

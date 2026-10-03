@@ -12,7 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'commercial' => \App\Http\Middleware\AuthenticateCommercial::class,
+            'crm.role' => \App\Http\Middleware\EnsureCrmRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
