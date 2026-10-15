@@ -556,6 +556,8 @@ class LocationVenteTest extends TestCase
             ->assertSee('Montant à rembourser')
             ->assertSee('Nombre de versements')
             ->assertSee('Notre marge')
+            ->assertSee('Versements à effectuer')
+            ->assertSee('Payer')
             ->assertSee('220 000 FCFA')
             ->assertSee('8 800 FCFA / échéance × 25', false)
             ->assertSee(route('manager.motos.photo', [$contrat->moto, 'droite']), false);

@@ -35,7 +35,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">Date du paiement</label>
-              <input type="date" class="form-control" name="date_paiement" value="{{ old('date_paiement', now()->toDateString()) }}" max="{{ now()->toDateString() }}" required>
+              <input type="date" class="form-control" name="date_paiement" id="paiementDate" value="{{ old('date_paiement', now()->toDateString()) }}" max="{{ now()->toDateString() }}" required>
             </div>
             <div class="col-md-6">
               <label class="form-label">Mode de paiement</label>

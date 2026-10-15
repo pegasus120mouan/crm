@@ -31,9 +31,6 @@
         <i class="icon-base bx bx-edit me-1"></i> Modifier
       </button>
       @if ($enCours)
-        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalPaiement">
-          <i class="icon-base bx bx-money me-1"></i> Enregistrer un paiement
-        </button>
         <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalResilier">
           <i class="icon-base bx bx-block me-1"></i> Résilier
         </button>
@@ -170,51 +167,57 @@
 
     <div class="col-lg-8 mb-4">
       <div class="card h-100">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0">Paiements reçus</h5>
-          <small class="text-muted">{{ $contrat->paiements->count() }} paiement(s)</small>
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <h5 class="mb-0">Versements à effectuer</h5>
+            <small class="text-muted">{{ $nombreEcheances }} versement(s) · {{ $contrat->libelleFrequence() }}</small>
+          </div>
         </div>
-        <div class="table-responsive">
+        <div class="table-responsive" style="max-height: 560px;">
           <table class="table table-hover mb-0">
-            <thead>
+            <thead class="sticky-top bg-body">
               <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Mode</th>
-                <th>Référence</th>
+                <th>N°</th>
+                <th>Date prévue</th>
                 <th class="text-end">Montant</th>
-                <th>Enregistré par</th>
-                <th></th>
+                <th>Statut</th>
+                <th class="text-end"></th>
               </tr>
             </thead>
             <tbody>
-              @forelse ($contrat->paiements as $paiement)
+              @forelse ($echeancier as $ligne)
+                @php
+                  $peutPayer = $enCours && ! in_array($ligne['statut'], ['payee', 'annulee'], true) && $contrat->reste() > 0;
+                  $montantAPayer = $ligne['statut'] === 'partielle'
+                    ? max(0, $ligne['cumul'] - $contrat->montantPaye())
+                    : min($ligne['montant'], $contrat->reste());
+                @endphp
                 <tr>
-                  <td>{{ $paiement->date_paiement->format('d/m/Y') }}</td>
-                  <td><span class="badge bg-label-{{ $paiement->type === 'apport' ? 'info' : 'primary' }}">{{ $paiement->type === 'apport' ? 'Apport' : 'Échéance' }}</span></td>
-                  <td>{{ $paiement->mode }}</td>
-                  <td><small>{{ $paiement->reference ?: '—' }}</small></td>
-                  <td class="text-end fw-medium">{{ $fcfa($paiement->montant) }}</td>
-                  <td><small>{{ $paiement->auteur ? trim($paiement->auteur->prenoms.' '.$paiement->auteur->nom) : '—' }}</small></td>
-                  <td>
-                    @if ($contrat->statut !== \App\Models\LocationVente\Contrat::STATUT_RESILIE)
+                  <td>{{ $ligne['numero'] }}</td>
+                  <td>{{ $ligne['date']->format('d/m/Y') }}</td>
+                  <td class="text-end fw-medium">{{ $fcfa($ligne['montant']) }}</td>
+                  <td><span class="badge bg-label-{{ $libellesEcheance[$ligne['statut']][1] }}">{{ $libellesEcheance[$ligne['statut']][0] }}</span></td>
+                  <td class="text-end">
+                    @if ($peutPayer && $montantAPayer > 0)
                       <button
                         type="button"
-                        class="btn btn-sm btn-icon btn-outline-danger"
-                        title="Annuler ce paiement"
+                        class="btn btn-sm btn-success js-payer-echeance"
                         data-bs-toggle="modal"
-                        data-bs-target="#modalConfirmation"
-                        data-confirm-titre="Annuler un paiement"
-                        data-confirm-texte="Annuler le paiement de {{ $fcfa($paiement->montant) }} du {{ $paiement->date_paiement->format('d/m/Y') }} ?{{ $contrat->statut === 'solde' ? ' Le contrat repassera en cours et la moto reviendra en location-vente.' : '' }}"
-                        data-confirm-url="{{ route('manager.paiements.destroy', $paiement) }}">
-                        <i class="icon-base bx bx-trash"></i>
+                        data-bs-target="#modalPaiement"
+                        data-montant="{{ $montantAPayer }}"
+                        data-date="{{ min($ligne['date']->toDateString(), now()->toDateString()) }}">
+                        <i class="icon-base bx bx-money me-1"></i> Payer
                       </button>
+                    @elseif ($ligne['statut'] === 'payee')
+                      <span class="text-success small"><i class="icon-base bx bx-check"></i></span>
+                    @else
+                      <span class="text-muted">—</span>
                     @endif
                   </td>
                 </tr>
               @empty
                 <tr>
-                  <td colspan="7" class="text-center py-4">Aucun paiement reçu</td>
+                  <td colspan="5" class="text-center py-4">Aucun versement à effectuer.</td>
                 </tr>
               @endforelse
             </tbody>
@@ -224,34 +227,55 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">Échéancier</h5>
-      <small class="text-muted">{{ $contrat->nombreEcheances() }} échéance(s) après l'apport · {{ $contrat->libelleFrequence() }}</small>
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h5 class="mb-0">Historique des paiements</h5>
+        <small class="text-muted">{{ $contrat->paiements->count() }} paiement(s) · un paiement peut être annulé tant que le contrat n'est pas résilié</small>
+      </div>
     </div>
-    <div class="table-responsive" style="max-height: 480px;">
-      <table class="table table-sm table-hover mb-0">
-        <thead class="sticky-top bg-body">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
           <tr>
-            <th>N°</th>
             <th>Date</th>
+            <th>Type</th>
+            <th>Mode</th>
+            <th>Référence</th>
             <th class="text-end">Montant</th>
-            <th class="text-end">Cumul attendu</th>
-            <th>Statut</th>
+            <th>Enregistré par</th>
+            <th class="text-end">Action</th>
           </tr>
         </thead>
         <tbody>
-          @forelse ($echeancier as $ligne)
+          @forelse ($contrat->paiements as $paiement)
             <tr>
-              <td>{{ $ligne['numero'] }}</td>
-              <td>{{ $ligne['date']->format('d/m/Y') }}</td>
-              <td class="text-end">{{ $fcfa($ligne['montant']) }}</td>
-              <td class="text-end">{{ $fcfa($ligne['cumul']) }}</td>
-              <td><span class="badge bg-label-{{ $libellesEcheance[$ligne['statut']][1] }}">{{ $libellesEcheance[$ligne['statut']][0] }}</span></td>
+              <td>{{ $paiement->date_paiement->format('d/m/Y') }}</td>
+              <td><span class="badge bg-label-{{ $paiement->type === 'apport' ? 'info' : 'primary' }}">{{ $paiement->type === 'apport' ? 'Apport' : 'Échéance' }}</span></td>
+              <td>{{ $paiement->mode }}</td>
+              <td><small>{{ $paiement->reference ?: '—' }}</small></td>
+              <td class="text-end fw-medium">{{ $fcfa($paiement->montant) }}</td>
+              <td><small>{{ $paiement->auteur ? trim($paiement->auteur->prenoms.' '.$paiement->auteur->nom) : '—' }}</small></td>
+              <td class="text-end">
+                @if ($contrat->statut !== \App\Models\LocationVente\Contrat::STATUT_RESILIE)
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalConfirmation"
+                    data-confirm-titre="Annuler un paiement"
+                    data-confirm-texte="Annuler le paiement de {{ $fcfa($paiement->montant) }} du {{ $paiement->date_paiement->format('d/m/Y') }} ?{{ $contrat->statut === 'solde' ? ' Le contrat repassera en cours et la moto reviendra en location-vente.' : '' }}"
+                    data-confirm-url="{{ route('manager.paiements.destroy', $paiement) }}">
+                    <i class="icon-base bx bx-undo me-1"></i> Annuler
+                  </button>
+                @else
+                  <span class="text-muted small">—</span>
+                @endif
+              </td>
             </tr>
           @empty
             <tr>
-              <td colspan="5" class="text-center py-4">Moto payée intégralement à l'apport : aucune échéance.</td>
+              <td colspan="7" class="text-center py-4">Aucun paiement enregistré</td>
             </tr>
           @endforelse
         </tbody>
@@ -459,6 +483,30 @@
 
   @if ($enCours)
     @include('manager.paiements._modal', ['contratFixe' => $contrat, 'contrats' => collect()])
+
+    @push('scripts')
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        var modal = document.getElementById('modalPaiement');
+        var montant = document.getElementById('paiementMontant');
+        var date = document.getElementById('paiementDate');
+        if (!modal || !montant || !date) return;
+
+        modal.addEventListener('show.bs.modal', function (event) {
+          var bouton = event.relatedTarget;
+          if (!bouton || !bouton.classList.contains('js-payer-echeance')) return;
+          var m = parseInt(bouton.getAttribute('data-montant') || '0', 10);
+          var d = bouton.getAttribute('data-date') || '';
+          if (m > 0) {
+            montant.value = m;
+          }
+          if (d) {
+            date.value = d;
+          }
+        });
+      });
+    </script>
+    @endpush
 
     <div class="modal fade" id="modalResilier" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
