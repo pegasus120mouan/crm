@@ -36,6 +36,7 @@ class LivreurKycTest extends TestCase
             'database/migrations/2026_10_03_000004_make_moto_immatriculation_nullable.php',
             'database/migrations/2026_10_03_000005_add_price_breakdown_to_location_vente_contrats.php',
             'database/migrations/2026_10_15_000006_add_photo_carburant_cylindree_to_location_vente_motos.php',
+            'database/migrations/2026_10_15_000007_add_duree_and_date_fin_to_location_vente_contrats.php',
         ]]);
     }
 

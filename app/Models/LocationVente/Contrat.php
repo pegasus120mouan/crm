@@ -47,6 +47,8 @@ class Contrat extends Model
         'montant_echeance',
         'frequence',
         'date_debut',
+        'duree_mois',
+        'date_fin',
         'statut',
         'date_solde',
         'date_resiliation',
@@ -57,8 +59,10 @@ class Contrat extends Model
     {
         return [
             'date_debut' => 'date',
+            'date_fin' => 'date',
             'date_solde' => 'date',
             'date_resiliation' => 'date',
+            'duree_mois' => 'integer',
             'prix_achat' => 'integer',
             'cout_supplementaire' => 'integer',
             'marge' => 'integer',
