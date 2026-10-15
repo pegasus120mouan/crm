@@ -98,10 +98,8 @@ class MotoController extends Controller
             'numero_chassis' => ['nullable', 'required_without:immatriculation', 'string', 'max:100', Rule::unique('location_vente_motos', 'numero_chassis')->ignore($moto?->id)],
             'couleur' => ['nullable', 'string', 'max:50'],
             'annee' => ['nullable', 'integer', 'min:1990', 'max:'.(now()->year + 1)],
-            'prix_achat' => ['nullable', 'integer', 'min:0'],
             'date_acquisition' => ['nullable', 'date'],
             'statut' => [$moto ? 'nullable' : 'required', Rule::in(Moto::STATUTS_MANUELS)],
-            'notes' => ['nullable', 'string', 'max:2000'],
         ], [
             'numero_chassis.required_without' => "Le n° de châssis est obligatoire tant que l'immatriculation est en cours.",
         ]);

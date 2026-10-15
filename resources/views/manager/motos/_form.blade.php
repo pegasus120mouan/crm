@@ -40,15 +40,7 @@
     @endif
   </div>
   <div class="col-md-6">
-    <label class="form-label">Prix d'achat (FCFA)</label>
-    <input type="number" class="form-control" name="prix_achat" value="{{ $moto->prix_achat ?? old('prix_achat') }}" min="0">
-  </div>
-  <div class="col-md-6">
     <label class="form-label">Date d'acquisition</label>
     <input type="date" class="form-control" name="date_acquisition" value="{{ optional($moto?->date_acquisition)->format('Y-m-d') ?? old('date_acquisition') }}">
-  </div>
-  <div class="col-12">
-    <label class="form-label">Notes</label>
-    <textarea class="form-control" name="notes" rows="2">{{ $moto->notes ?? old('notes') }}</textarea>
   </div>
 </div>
