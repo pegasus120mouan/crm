@@ -65,6 +65,7 @@ class ContratController extends Controller
             'montant_echeance' => ['required', 'integer', 'min:1'],
             'frequence' => ['required', Rule::in(array_keys(Contrat::FREQUENCES))],
             'date_debut' => ['required', 'date'],
+            'duree_mois' => ['nullable', 'integer', 'min:1', 'max:120'],
             'mode_apport' => [Rule::requiredIf(fn () => (int) $request->input('apport') > 0), 'nullable', Rule::in(Paiement::MODES)],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -72,6 +73,10 @@ class ContratController extends Controller
         $validated['cout_supplementaire'] = (int) ($validated['cout_supplementaire'] ?? 0);
         $validated['marge'] = (int) ($validated['marge'] ?? 0);
         $validated['prix_total'] = $validated['prix_achat'] + $validated['cout_supplementaire'] + $validated['marge'];
+        $validated['duree_mois'] = isset($validated['duree_mois']) ? (int) $validated['duree_mois'] : null;
+        $validated['date_fin'] = $validated['duree_mois']
+            ? Contrat::dateFinDepuisDuree($validated['date_debut'], $validated['duree_mois'])->toDateString()
+            : null;
 
         if ($validated['prix_total'] < 1) {
             throw ValidationException::withMessages(['prix_achat' => 'Le montant à rembourser doit être supérieur à 0.']);
@@ -108,6 +113,8 @@ class ContratController extends Controller
                 'montant_echeance' => $validated['montant_echeance'],
                 'frequence' => $validated['frequence'],
                 'date_debut' => $validated['date_debut'],
+                'duree_mois' => $validated['duree_mois'],
+                'date_fin' => $validated['date_fin'],
                 'statut' => Contrat::STATUT_EN_COURS,
                 'notes' => $validated['notes'] ?? null,
             ]);
@@ -135,12 +142,82 @@ class ContratController extends Controller
 
     public function show(Contrat $contrat)
     {
-        $contrat->load(['livreur', 'moto', 'paiements' => fn ($query) => $query->with('auteur')->orderByDesc('date_paiement')->orderByDesc('id')]);
+        $contrat->load([
+            'livreur',
+            'moto.photos',
+            'paiements' => fn ($query) => $query->with('auteur')->orderByDesc('date_paiement')->orderByDesc('id'),
+        ]);
 
         return view('manager.contrats.show', [
             'contrat' => $contrat,
             'echeancier' => $contrat->echeancier(),
         ]);
+    }
+
+    public function update(Request $request, Contrat $contrat)
+    {
+        $validated = $request->validate([
+            'prix_acquisition' => ['required', 'integer', 'min:0'],
+            'cout_supplementaire' => ['nullable', 'integer', 'min:0'],
+            'apport' => ['nullable', 'integer', 'min:0'],
+            'montant_a_verser' => ['required', 'integer', 'min:1'],
+            'frequence' => ['required', Rule::in(array_keys(Contrat::FREQUENCES))],
+            'date_debut' => ['required', 'date'],
+            'duree_mois' => ['required', 'integer', 'min:1', 'max:120'],
+        ]);
+
+        $validated['cout_supplementaire'] = (int) ($validated['cout_supplementaire'] ?? 0);
+        $validated['apport'] = (int) ($validated['apport'] ?? 0);
+        $validated['prix_acquisition'] = (int) $validated['prix_acquisition'];
+        $validated['montant_a_verser'] = (int) $validated['montant_a_verser'];
+        $validated['duree_mois'] = (int) $validated['duree_mois'];
+
+        $nombreEcheances = Contrat::nombreEcheancesSurPeriode(
+            $validated['date_debut'],
+            $validated['duree_mois'],
+            $validated['frequence']
+        );
+        if ($nombreEcheances < 1) {
+            throw ValidationException::withMessages([
+                'duree_mois' => 'La durée doit couvrir au moins une échéance selon la fréquence choisie.',
+            ]);
+        }
+
+        $montantEcheance = Contrat::montantEcheanceDepuisVersement($validated['montant_a_verser'], $validated['frequence']);
+        $prixTotal = $validated['apport'] + ($montantEcheance * $nombreEcheances);
+
+        $dejaPaye = $contrat->montantPaye();
+        if ($prixTotal < $dejaPaye) {
+            throw ValidationException::withMessages([
+                'montant_a_verser' => 'Le total à rembourser ('.$prixTotal.' FCFA) ne peut pas être inférieur aux '.$dejaPaye.' FCFA déjà encaissés.',
+            ]);
+        }
+
+        $dateFin = Contrat::dateFinDepuisDuree($validated['date_debut'], $validated['duree_mois']);
+        $marge = $prixTotal - $validated['prix_acquisition'] - $validated['cout_supplementaire'];
+
+        DB::transaction(function () use ($contrat, $validated, $dateFin, $marge, $prixTotal, $montantEcheance) {
+            $contrat->moto()->update(['prix_achat' => $validated['prix_acquisition']]);
+
+            $contrat->update([
+                'prix_achat' => $validated['prix_acquisition'],
+                'cout_supplementaire' => $validated['cout_supplementaire'],
+                'marge' => $marge,
+                'prix_total' => $prixTotal,
+                'apport' => $validated['apport'],
+                'montant_echeance' => $montantEcheance,
+                'frequence' => $validated['frequence'],
+                'date_debut' => $validated['date_debut'],
+                'duree_mois' => $validated['duree_mois'],
+                'date_fin' => $dateFin->toDateString(),
+            ]);
+
+            $contrat->synchroniserStatut();
+        });
+
+        return redirect()
+            ->route('manager.contrats.show', $contrat)
+            ->with('success', 'Conditions du contrat mises à jour.');
     }
 
     public function resilier(Request $request, Contrat $contrat)

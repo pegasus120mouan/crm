@@ -82,5 +82,18 @@
   <div class="col-md-4">
     <label class="form-label">Date d'acquisition</label>
     <input type="date" class="form-control" name="date_acquisition" value="{{ optional($moto?->date_acquisition)->format('Y-m-d') ?? old('date_acquisition') }}">
+    <small class="text-muted">Entrée de la moto dans le parc — distincte de la date de début du contrat.</small>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Prix d'acquisition (FCFA)</label>
+    <input
+      type="number"
+      class="form-control"
+      name="prix_achat"
+      value="{{ old('prix_achat', $moto?->prix_achat ?? 0) }}"
+      min="0"
+      step="1"
+      placeholder="0">
+    <small class="text-muted">Coût d'achat de la moto pour le parc. Par défaut 0.</small>
   </div>
 </div>

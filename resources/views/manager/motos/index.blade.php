@@ -62,7 +62,7 @@
             <th>Moto</th>
             <th>Immatriculation</th>
             <th>Châssis</th>
-            <th class="text-end">Prix d'achat</th>
+            <th class="text-end">Prix d'acquisition</th>
             <th>Statut</th>
             <th>Livreur / propriétaire</th>
             <th>Actions</th>
@@ -91,7 +91,7 @@
                 @endif
               </td>
               <td><small>{{ $moto->numero_chassis ?: '—' }}</small></td>
-              <td class="text-end">{{ $moto->prix_achat ? number_format($moto->prix_achat, 0, ',', ' ').' FCFA' : '—' }}</td>
+              <td class="text-end">{{ number_format((int) $moto->prix_achat, 0, ',', ' ') }} FCFA</td>
               <td><span class="badge bg-label-{{ $moto->couleurStatut() }}">{{ $moto->libelleStatut() }}</span></td>
               <td>
                 @if ($contrat)

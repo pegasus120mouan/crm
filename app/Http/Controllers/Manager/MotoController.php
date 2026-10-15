@@ -134,6 +134,7 @@ class MotoController extends Controller
             'annee' => ['nullable', 'integer', 'min:1990', 'max:'.(now()->year + 1)],
             'carburant' => ['nullable', Rule::in(array_keys(Moto::CARBURANTS))],
             'cylindree' => ['nullable', 'integer', 'min:1', 'max:3000'],
+            'prix_achat' => ['nullable', 'integer', 'min:0'],
             'date_acquisition' => ['nullable', 'date'],
             'statut' => [$moto ? 'nullable' : 'required', Rule::in(Moto::STATUTS_MANUELS)],
             'photos' => ['nullable', 'array'],
@@ -142,6 +143,8 @@ class MotoController extends Controller
             'numero_chassis.required_without' => "Le n° de châssis est obligatoire tant que l'immatriculation est en cours.",
             ...$messagesPhotos,
         ]);
+
+        $validated['prix_achat'] = (int) ($validated['prix_achat'] ?? 0);
 
         return collect($validated)->except('photos')->all();
     }

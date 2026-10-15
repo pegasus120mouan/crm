@@ -70,7 +70,21 @@ class LocationVenteTest extends TestCase
         ])->assertRedirect(route('manager.motos.index'));
 
         $this->assertDatabaseHas('location_vente_livreurs', ['nom' => 'Kone', 'statut' => 0]);
-        $this->assertDatabaseHas('location_vente_motos', ['immatriculation' => 'AB 1234 CI', 'statut' => 'disponible']);
+        $this->assertDatabaseHas('location_vente_motos', [
+            'immatriculation' => 'AB 1234 CI',
+            'statut' => 'disponible',
+            'prix_achat' => 0,
+        ]);
+
+        $moto = Moto::firstOrFail();
+        $this->asManager()->put(route('manager.motos.update', $moto), [
+            'marque' => 'Haojue',
+            'modele' => 'HJ125',
+            'immatriculation' => 'AB 1234 CI',
+            'prix_achat' => 850000,
+            'statut' => 'disponible',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(850000, $moto->fresh()->prix_achat);
     }
 
     public function test_moto_photos_of_every_face_fuel_and_engine_size_are_saved(): void
@@ -348,6 +362,112 @@ class LocationVenteTest extends TestCase
         $this->assertStringContainsString('Retards répétés', $contrat->notes);
     }
 
+    public function test_contract_conditions_can_be_updated(): void
+    {
+        $contrat = $this->contrat([
+            'date_debut' => '2026-10-01',
+            'prix_total' => 100000,
+            'montant_echeance' => 10000,
+            'apport' => 0,
+            'frequence' => 'hebdomadaire',
+        ]);
+        $contrat->moto->update(['prix_achat' => 50000]);
+
+        $nombre = Contrat::nombreEcheancesSurPeriode('2026-10-15', 6, 'hebdomadaire');
+        $this->assertSame(26, $nombre);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 380000,
+            'cout_supplementaire' => 100000,
+            'apport' => 0,
+            'montant_a_verser' => 4000,
+            'frequence' => 'hebdomadaire',
+            'date_debut' => '2026-10-15',
+            'duree_mois' => 6,
+        ])->assertRedirect(route('manager.contrats.show', $contrat));
+
+        $contrat->refresh()->load('moto');
+        $this->assertSame(380000, $contrat->moto->prix_achat);
+        $this->assertSame(380000, $contrat->prix_achat);
+        $this->assertSame(100000, $contrat->cout_supplementaire);
+        $this->assertSame(24000, $contrat->montant_echeance);
+        $this->assertSame(4000, $contrat->montantAVerser());
+        $this->assertSame(26, $contrat->nombreEcheances());
+        $this->assertSame(624000, $contrat->prix_total);
+        $this->assertSame(144000, $contrat->marge);
+        $this->assertSame('hebdomadaire', $contrat->frequence);
+        $this->assertSame('2026-10-15', $contrat->date_debut->toDateString());
+        $this->assertSame(6, $contrat->duree_mois);
+        $this->assertSame('2027-04-15', $contrat->date_fin->toDateString());
+        $this->assertSame(244000, $contrat->notreMarge());
+    }
+
+    public function test_daily_installments_count_working_days_over_duration(): void
+    {
+        $nombre = Contrat::nombreEcheancesSurPeriode('2026-10-15', 6, 'journalier');
+        $this->assertGreaterThan(140, $nombre);
+        $this->assertLessThan(160, $nombre);
+
+        $contrat = $this->contrat(['prix_total' => 100000, 'montant_echeance' => 1000, 'frequence' => 'journalier']);
+        $contrat->moto->update(['prix_achat' => 380000]);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 380000,
+            'cout_supplementaire' => 0,
+            'apport' => 0,
+            'montant_a_verser' => 4000,
+            'frequence' => 'journalier',
+            'date_debut' => '2026-10-15',
+            'duree_mois' => 6,
+        ])->assertRedirect(route('manager.contrats.show', $contrat));
+
+        $contrat->refresh()->load('moto');
+        $this->assertSame(4000, $contrat->montant_echeance);
+        $this->assertSame($nombre, $contrat->nombreEcheances());
+        $this->assertSame(4000 * $nombre, $contrat->prix_total);
+        $this->assertSame((4000 * $nombre) - 380000, $contrat->notreMarge());
+    }
+
+    public function test_contract_total_cannot_be_lower_than_amount_already_paid(): void
+    {
+        $contrat = $this->contrat(['prix_total' => 100000, 'montant_echeance' => 10000, 'frequence' => 'hebdomadaire']);
+        $contrat->paiements()->create(['montant' => 40000, 'date_paiement' => '2026-10-02', 'mode' => 'Espèces']);
+
+        $this->asManager()->from(route('manager.contrats.show', $contrat))
+            ->put(route('manager.contrats.update', $contrat), [
+                'prix_acquisition' => 0,
+                'cout_supplementaire' => 0,
+                'apport' => 0,
+                'montant_a_verser' => 1000,
+                'frequence' => 'hebdomadaire',
+                'date_debut' => '2026-10-01',
+                'duree_mois' => 1,
+            ])
+            ->assertSessionHasErrors('montant_a_verser');
+
+        $this->assertSame(100000, $contrat->fresh()->prix_total);
+    }
+
+    public function test_creating_a_contract_stores_duration_and_end_date(): void
+    {
+        [$livreur, $moto] = $this->livreurEtMoto();
+
+        $this->asManager()->post('/manager/contrats', [
+            'livreur_id' => $livreur->id,
+            'moto_id' => $moto->id,
+            'prix_achat' => 400000,
+            'apport' => 0,
+            'montant_echeance' => 5000,
+            'frequence' => 'journalier',
+            'date_debut' => '2026-10-01',
+            'duree_mois' => 6,
+        ])->assertRedirect();
+
+        $contrat = Contrat::firstOrFail();
+        $this->assertSame(6, $contrat->duree_mois);
+        $this->assertSame('2027-04-01', $contrat->date_fin->toDateString());
+    }
+
     public function test_arrears_follow_the_payment_schedule(): void
     {
         $contrat = $this->contrat(['date_debut' => '2026-09-23', 'frequence' => 'journalier', 'montant_echeance' => 1000, 'prix_total' => 50000]);
@@ -411,6 +531,34 @@ class LocationVenteTest extends TestCase
         foreach (['/manager/contrats', '/manager/paiements'] as $url) {
             $this->asManager()->get($url)->assertSee(route('manager.livreurs.photo', $contrat->livreur_id), false);
         }
+    }
+
+    public function test_contract_show_displays_moto_photo_and_our_margin(): void
+    {
+        $contrat = $this->contrat([
+            'prix_total' => 600000,
+            'montant_echeance' => 24000,
+            'apport' => 0,
+            'frequence' => 'hebdomadaire',
+        ]);
+        $contrat->moto->update(['prix_achat' => 380000]);
+        $contrat->moto->enregistrerPhotos($this->photosMoto());
+
+        $this->assertSame(380000, $contrat->fresh()->prixAcquisitionMoto());
+        $this->assertSame(220000, $contrat->fresh()->load('moto')->notreMarge());
+        $this->assertSame(25, $contrat->nombreEcheances());
+        $this->assertSame(8800, $contrat->fresh()->load('moto')->notreMargeParEcheance());
+
+        $this->asManager()
+            ->get(route('manager.contrats.show', $contrat))
+            ->assertOk()
+            ->assertSee('Montant d&#039;acquisition', false)
+            ->assertSee('Montant à rembourser')
+            ->assertSee('Nombre de versements')
+            ->assertSee('Notre marge')
+            ->assertSee('220 000 FCFA')
+            ->assertSee('8 800 FCFA / échéance × 25', false)
+            ->assertSee(route('manager.motos.photo', [$contrat->moto, 'droite']), false);
     }
 
     public function test_commercial_cannot_access_location_vente(): void

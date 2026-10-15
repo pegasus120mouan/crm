@@ -49,6 +49,7 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::get('/contrats', [Manager\ContratController::class, 'index'])->name('contrats.index');
     Route::post('/contrats', [Manager\ContratController::class, 'store'])->name('contrats.store');
     Route::get('/contrats/{contrat}', [Manager\ContratController::class, 'show'])->name('contrats.show');
+    Route::put('/contrats/{contrat}', [Manager\ContratController::class, 'update'])->name('contrats.update');
     Route::patch('/contrats/{contrat}/resilier', [Manager\ContratController::class, 'resilier'])->name('contrats.resilier');
 
     Route::get('/paiements', [Manager\PaiementController::class, 'index'])->name('paiements.index');

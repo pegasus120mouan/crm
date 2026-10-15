@@ -98,9 +98,18 @@
               </select>
               <small class="text-muted">Hebdomadaire = les 6 paiements journaliers regroupés en un seul.</small>
             </div>
-            <div class="col-md-6">
-              <label class="form-label" for="contratDebut">Date de remise de la moto</label>
+            <div class="col-md-4">
+              <label class="form-label" for="contratDebut">Date de début</label>
               <input type="date" class="form-control js-calcul" name="date_debut" id="contratDebut" value="{{ old('date_debut', now()->toDateString()) }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="contratDuree">Durée (mois)</label>
+              <input type="number" class="form-control js-calcul" name="duree_mois" id="contratDuree" min="1" max="120" value="{{ old('duree_mois') }}" placeholder="Ex : 12">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="contratDateFin">Date de fin</label>
+              <input type="date" class="form-control" id="contratDateFin" value="" readonly>
+              <small class="text-muted">Calculée : début + durée.</small>
             </div>
             <div class="col-12">
               <div class="alert alert-primary mb-0" id="contratApercu">Renseignez le prix et le montant des échéances pour voir la durée du contrat.</div>
@@ -133,11 +142,27 @@
     var echeance = document.getElementById('contratEcheance');
     var frequence = document.getElementById('contratFrequence');
     var debut = document.getElementById('contratDebut');
+    var dureeMois = document.getElementById('contratDuree');
+    var dateFin = document.getElementById('contratDateFin');
     var modeApport = document.getElementById('contratModeApport');
     var apercu = document.getElementById('contratApercu');
     var moto = document.getElementById('contratMoto');
     var livreur = document.getElementById('contratLivreur');
     if (!modal || !prixAchat || !apercu) return;
+
+    function ajouterMois(iso, mois) {
+      var parts = iso.split('-');
+      if (parts.length !== 3) return '';
+      var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      var jour = d.getDate();
+      d.setMonth(d.getMonth() + mois);
+      if (d.getDate() < jour) {
+        d.setDate(0);
+      }
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var j = String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' + m + '-' + j;
+    }
 
     var format = function (n) { return new Intl.NumberFormat('fr-FR').format(n) + ' FCFA'; };
     var JOURS = {{ \App\Models\LocationVente\Contrat::JOURS_TRAVAILLES_PAR_SEMAINE }};
@@ -186,7 +211,13 @@
       var base = p - a;
       var n = Math.ceil(base / e);
       var derniere = base - (n - 1) * e;
-      var fin = debut.value ? ajouter(new Date(debut.value + 'T00:00:00'), frequence.value, n) : null;
+      var mois = parseInt(dureeMois.value, 10) || 0;
+      var finContrat = debut.value && mois > 0 ? ajouterMois(debut.value, mois) : '';
+      if (dateFin) dateFin.value = finContrat;
+      var finEcheances = debut.value ? ajouter(new Date(debut.value + 'T00:00:00'), frequence.value, n) : null;
+      var finAffichee = finContrat
+        ? new Date(finContrat + 'T00:00:00')
+        : finEcheances;
 
       var equivalent = frequence.value === 'hebdomadaire'
         ? ' (soit ' + format(Math.round(e / JOURS)) + ' par jour travaillé)'
@@ -195,7 +226,8 @@
       apercu.className = 'alert alert-primary mb-0';
       apercu.innerHTML = 'Reste à financer : <strong>' + format(base) + '</strong> en <strong>' + n + ' échéance(s)</strong> de ' + format(e) +
         ' par ' + unites[frequence.value] + equivalent + (n > 1 && derniere !== e ? ', dernière échéance : ' + format(derniere) : '') +
-        (fin ? '.<br>Fin prévue le <strong>' + fin.toLocaleDateString('fr-FR') + '</strong> : la moto deviendra alors la propriété du livreur.' : '.');
+        (finAffichee ? '.<br>Fin prévue le <strong>' + finAffichee.toLocaleDateString('fr-FR') + '</strong>' +
+          (mois > 0 ? ' (' + mois + ' mois).' : ' selon les échéances.') : '.');
     }
 
     function prixDeLaMoto(forcer) {

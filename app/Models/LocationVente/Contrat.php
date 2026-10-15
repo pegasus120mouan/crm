@@ -129,6 +129,79 @@ class Contrat extends Model
         return $base > 0 && $this->montant_echeance > 0 ? (int) ceil($base / $this->montant_echeance) : 0;
     }
 
+    /** Échéance = montant à verser (journalier) ou × 6 (hebdomadaire). */
+    public static function montantEcheanceDepuisVersement(int $montantAVerser, string $frequence): int
+    {
+        return $frequence === self::FREQUENCE_HEBDOMADAIRE
+            ? $montantAVerser * self::JOURS_TRAVAILLES_PAR_SEMAINE
+            : $montantAVerser;
+    }
+
+    /** Montant à verser saisi manuellement (journalier), déduit de l'échéance stockée. */
+    public function montantAVerser(): int
+    {
+        if ($this->frequence === self::FREQUENCE_HEBDOMADAIRE) {
+            return (int) intdiv($this->montant_echeance, self::JOURS_TRAVAILLES_PAR_SEMAINE);
+        }
+
+        return (int) $this->montant_echeance;
+    }
+
+    /**
+     * Nombre d'échéances sur la période [date début → date fin],
+     * selon la fréquence (jours travaillés hors dimanche, ou semaines).
+     */
+    public static function nombreEcheancesSurPeriode(
+        CarbonInterface|string $dateDebut,
+        int $dureeMois,
+        string $frequence
+    ): int {
+        if ($dureeMois < 1) {
+            return 0;
+        }
+
+        $fin = static::dateFinDepuisDuree($dateDebut, $dureeMois);
+        $reference = new static([
+            'date_debut' => Carbon::parse($dateDebut)->toDateString(),
+            'frequence' => $frequence,
+            'montant_echeance' => 1,
+            'prix_total' => PHP_INT_MAX,
+            'apport' => 0,
+        ]);
+
+        $nombre = 0;
+        for ($numero = 1; $numero <= 10000; $numero++) {
+            if ($reference->dateEcheance($numero)->gt($fin)) {
+                break;
+            }
+            $nombre = $numero;
+        }
+
+        return $nombre;
+    }
+
+    /** Prix d'acquisition de la moto (coût parc), distinct du prix de base du contrat. */
+    public function prixAcquisitionMoto(): int
+    {
+        return (int) ($this->moto?->prix_achat ?? 0);
+    }
+
+    /**
+     * Notre marge = total à rembourser − prix d'acquisition.
+     * Répartie ensuite sur le nombre d'échéances.
+     */
+    public function notreMarge(): int
+    {
+        return $this->prix_total - $this->prixAcquisitionMoto();
+    }
+
+    public function notreMargeParEcheance(): int
+    {
+        $nombre = $this->nombreEcheances();
+
+        return $nombre > 0 ? (int) intdiv($this->notreMarge(), $nombre) : $this->notreMarge();
+    }
+
     public function dateEcheance(int $numero): Carbon
     {
         $date = Carbon::parse($this->date_debut)->startOfDay();
@@ -157,7 +230,16 @@ class Contrat extends Model
 
     public function dateFinPrevue(): Carbon
     {
+        if ($this->date_fin) {
+            return Carbon::parse($this->date_fin)->startOfDay();
+        }
+
         return $this->dateEcheance($this->nombreEcheances());
+    }
+
+    public static function dateFinDepuisDuree(CarbonInterface|string $dateDebut, int $dureeMois): Carbon
+    {
+        return Carbon::parse($dateDebut)->startOfDay()->addMonthsNoOverflow($dureeMois);
     }
 
     public function cumulAttendu(int $numero): int
