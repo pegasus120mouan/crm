@@ -40,6 +40,9 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
 
     Route::get('/motos', [Manager\MotoController::class, 'index'])->name('motos.index');
     Route::post('/motos', [Manager\MotoController::class, 'store'])->name('motos.store');
+    Route::get('/motos/{moto}/photos/{face}', [Manager\MotoController::class, 'photo'])
+        ->whereIn('face', array_keys(\App\Models\LocationVente\MotoPhoto::FACES))
+        ->name('motos.photo');
     Route::put('/motos/{moto}', [Manager\MotoController::class, 'update'])->name('motos.update');
     Route::delete('/motos/{moto}', [Manager\MotoController::class, 'destroy'])->name('motos.destroy');
 

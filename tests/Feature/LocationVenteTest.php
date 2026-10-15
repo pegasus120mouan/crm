@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\LocationVente\Contrat;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
+use App\Models\LocationVente\MotoPhoto;
 use App\Models\LocationVente\Paiement;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class LocationVenteTest extends TestCase
@@ -18,6 +21,7 @@ class LocationVenteTest extends TestCase
         parent::setUp();
 
         Carbon::setTestNow('2026-10-03 10:00:00');
+        Storage::fake(Moto::DISQUE);
 
         Schema::dropIfExists('utilisateurs');
         Schema::create('utilisateurs', function (Blueprint $table) {
@@ -36,6 +40,7 @@ class LocationVenteTest extends TestCase
             'database/migrations/2026_10_03_000003_set_livreur_statut_default_inactif.php',
             'database/migrations/2026_10_03_000004_make_moto_immatriculation_nullable.php',
             'database/migrations/2026_10_03_000005_add_price_breakdown_to_location_vente_contrats.php',
+            'database/migrations/2026_10_15_000006_add_photo_carburant_cylindree_to_location_vente_motos.php',
         ]]);
     }
 
@@ -60,10 +65,87 @@ class LocationVenteTest extends TestCase
             'modele' => 'HJ125',
             'immatriculation' => 'ab 1234 ci',
             'statut' => 'disponible',
+            'photos' => $this->photosMoto(),
         ])->assertRedirect(route('manager.motos.index'));
 
         $this->assertDatabaseHas('location_vente_livreurs', ['nom' => 'Kone', 'statut' => 0]);
         $this->assertDatabaseHas('location_vente_motos', ['immatriculation' => 'AB 1234 CI', 'statut' => 'disponible']);
+    }
+
+    public function test_moto_photos_of_every_face_fuel_and_engine_size_are_saved(): void
+    {
+        $this->asManager()->post('/manager/motos', [
+            'marque' => 'KTM',
+            'modele' => 'Duke 200',
+            'numero_chassis' => 'tmby123',
+            'carburant' => 'essence',
+            'cylindree' => 200,
+            'statut' => 'disponible',
+            'photos' => $this->photosMoto(),
+        ])->assertSessionHasNoErrors();
+
+        $moto = Moto::firstOrFail();
+        $this->assertSame(['essence', 200], [$moto->carburant, $moto->cylindree]);
+        $this->assertSame('Essence · 200 cc', $moto->caracteristiques());
+
+        $photos = $moto->photosParFace();
+        $this->assertEqualsCanonicalizing(array_keys(MotoPhoto::FACES), array_keys($photos));
+        foreach ($photos as $face => $photo) {
+            Storage::disk(Moto::DISQUE)->assertExists($photo->chemin);
+            $this->asManager()->get(route('manager.motos.photo', [$moto, $face]))->assertOk();
+        }
+        $this->assertSame('droite', $moto->photoPrincipale()->face);
+
+        $this->asManager()->from('/manager/motos')->post('/manager/motos', [
+            'marque' => 'TVS',
+            'numero_chassis' => 'tvs1',
+            'carburant' => 'kerosene',
+            'statut' => 'disponible',
+            'photos' => $this->photosMoto(),
+        ])->assertSessionHasErrors('carburant');
+    }
+
+    public function test_every_face_is_required_when_adding_a_moto(): void
+    {
+        $photos = $this->photosMoto();
+        unset($photos['arriere']);
+
+        $this->asManager()->from('/manager/motos')->post('/manager/motos', [
+            'marque' => 'KTM',
+            'numero_chassis' => 'tmby123',
+            'statut' => 'disponible',
+            'photos' => $photos,
+        ])->assertSessionHasErrors(['photos.arriere' => 'La photo « Face arrière » est obligatoire.']);
+
+        $this->assertSame(0, Moto::count());
+        $this->assertSame([], Storage::disk(Moto::DISQUE)->allFiles());
+    }
+
+    public function test_editing_a_moto_replaces_only_the_new_faces(): void
+    {
+        $this->asManager()->post('/manager/motos', [
+            'marque' => 'KTM',
+            'numero_chassis' => 'tmby123',
+            'statut' => 'disponible',
+            'photos' => $this->photosMoto(),
+        ])->assertSessionHasNoErrors();
+        $moto = Moto::firstOrFail();
+        $avant = $moto->photosParFace();
+
+        $this->asManager()->put(route('manager.motos.update', $moto), [
+            'marque' => 'KTM',
+            'numero_chassis' => 'tmby123',
+            'photos' => ['avant' => UploadedFile::fake()->image('avant-2.jpg')],
+        ])->assertSessionHasNoErrors();
+
+        $apres = $moto->fresh()->photosParFace();
+        $this->assertNotSame($avant['avant']->chemin, $apres['avant']->chemin);
+        $this->assertSame($avant['droite']->chemin, $apres['droite']->chemin);
+        Storage::disk(Moto::DISQUE)->assertMissing($avant['avant']->chemin);
+        Storage::disk(Moto::DISQUE)->assertExists($apres['avant']->chemin);
+
+        $this->asManager()->delete(route('manager.motos.destroy', $moto));
+        $this->assertSame([], Storage::disk(Moto::DISQUE)->allFiles());
     }
 
     public function test_assign_buttons_open_the_contract_form_with_the_right_choices(): void
@@ -104,6 +186,7 @@ class LocationVenteTest extends TestCase
                 'marque' => 'KTM',
                 'numero_chassis' => $chassis,
                 'statut' => 'disponible',
+                'photos' => $this->photosMoto(),
             ])->assertSessionHasNoErrors();
         }
 
@@ -389,6 +472,16 @@ class LocationVenteTest extends TestCase
             'frequence' => 'journalier',
             'date_debut' => '2026-10-03',
         ];
+    }
+
+    /**
+     * @return array<string, UploadedFile>
+     */
+    private function photosMoto(): array
+    {
+        return collect(array_keys(MotoPhoto::FACES))
+            ->mapWithKeys(fn (string $face) => [$face => UploadedFile::fake()->image("{$face}.jpg", 640, 480)])
+            ->all();
     }
 
     /**

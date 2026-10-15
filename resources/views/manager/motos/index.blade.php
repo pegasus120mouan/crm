@@ -73,8 +73,15 @@
             @php($contrat = $moto->statut === \App\Models\LocationVente\Moto::STATUT_EN_LOCATION || $moto->statut === \App\Models\LocationVente\Moto::STATUT_CEDEE ? $moto->contratActuel : null)
             <tr>
               <td>
-                <div class="fw-medium">{{ trim($moto->marque.' '.$moto->modele) }}</div>
-                <small class="text-muted">{{ collect([$moto->couleur, $moto->annee])->filter()->implode(' · ') ?: '—' }}</small>
+                <div class="d-flex align-items-center">
+                  @if ($principale = $moto->photoPrincipale())
+                    <img src="{{ route('manager.motos.photo', [$moto, $principale->face]) }}?v={{ $principale->updated_at?->timestamp }}" alt="" class="rounded me-2 flex-shrink-0" style="width: 48px; height: 36px; object-fit: cover;" loading="lazy">
+                  @endif
+                  <div>
+                    <div class="fw-medium">{{ trim($moto->marque.' '.$moto->modele) }}</div>
+                    <small class="text-muted">{{ $moto->caracteristiques() ?: '—' }}</small>
+                  </div>
+                </div>
               </td>
               <td class="fw-medium">
                 @if ($moto->immatriculationEnCours())
@@ -137,7 +144,7 @@
   <div class="modal fade" id="modalAjouterMoto" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content">
-        <form action="{{ route('manager.motos.store') }}" method="POST">
+        <form action="{{ route('manager.motos.store') }}" method="POST" enctype="multipart/form-data">
           @csrf
           <div class="modal-header">
             <h5 class="modal-title">Ajouter une moto au parc</h5>
@@ -159,7 +166,7 @@
     <div class="modal fade" id="modalModifierMoto{{ $moto->id }}" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
-          <form action="{{ route('manager.motos.update', $moto) }}" method="POST">
+          <form action="{{ route('manager.motos.update', $moto) }}" method="POST" enctype="multipart/form-data">
             @csrf
             @method('PUT')
             <div class="modal-header">
@@ -182,3 +189,34 @@
   @include('manager._confirmation')
   @include('manager.contrats._modal_nouveau')
 @endsection
+
+@push('scripts')
+<script>
+  document.addEventListener('change', function (event) {
+    var input = event.target;
+    if (!input.classList || !input.classList.contains('js-input-photo-moto') || !input.files || !input.files[0]) return;
+    var bloc = input.closest('.js-bloc-photo-moto');
+    var apercu = bloc.querySelector('.js-apercu-photo-moto');
+    apercu.src = URL.createObjectURL(input.files[0]);
+    apercu.classList.remove('d-none');
+    bloc.querySelector('.js-icone-photo-moto').classList.add('d-none');
+    var etat = bloc.querySelector('.js-etat-photo-moto');
+    etat.textContent = 'Nouvelle photo';
+    etat.className = 'small text-warning fw-medium js-etat-photo-moto';
+    bloc.classList.remove('border-danger');
+  });
+
+  document.addEventListener('submit', function (event) {
+    var manquantes = [];
+    event.target.querySelectorAll('.js-input-photo-moto[data-obligatoire]').forEach(function (input) {
+      if (input.files && input.files.length) return;
+      manquantes.push(input.dataset.libelle);
+      input.closest('.js-bloc-photo-moto').classList.add('border-danger');
+    });
+    if (manquantes.length) {
+      event.preventDefault();
+      alert('Photos manquantes : ' + manquantes.join(', ') + '.');
+    }
+  });
+</script>
+@endpush
