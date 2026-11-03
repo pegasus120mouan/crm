@@ -2,7 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\LocationVente\Contrat;
+use App\Models\LocationVente\Livreur;
+use App\Models\LocationVente\Moto;
+use App\Models\LocationVente\Paiement;
 use App\Models\Utilisateur;
+use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -10,6 +15,13 @@ use Tests\TestCase;
 
 class ManagerAccessTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -96,6 +108,53 @@ class ManagerAccessTest extends TestCase
             ->assertSee('50%');
     }
 
+    public function test_manager_dashboard_shows_lease_payments_before_commercial_performance(): void
+    {
+        Carbon::setTestNow('2026-11-03 10:00:00');
+        $this->migrateLocationVente();
+
+        $enRetard = $this->contratLocationVente([
+            'date_debut' => '2026-09-01',
+            'montant_echeance' => 10000,
+            'prix_total' => 200000,
+        ]);
+        $this->paiementLocationVente($enRetard, 20000, '2026-10-15');
+        $this->paiementLocationVente($enRetard, 15000, '2026-11-02');
+
+        $autreRetard = $this->contratLocationVente([
+            'date_debut' => '2026-10-01',
+            'montant_echeance' => 5000,
+            'prix_total' => 100000,
+        ]);
+
+        $aJour = $this->contratLocationVente([
+            'date_debut' => '2026-11-03',
+            'montant_echeance' => 10000,
+            'prix_total' => 200000,
+        ]);
+        $this->paiementLocationVente($aJour, 25000, '2026-11-03');
+        $this->paiementLocationVente($aJour, 40000, '2025-12-20');
+
+        $enRetard->unsetRelation('paiements');
+        $autreRetard->unsetRelation('paiements');
+        unset($enRetard->paiements_sum_montant, $autreRetard->paiements_sum_montant);
+
+        $this->withSession($this->sessionDe('manager'))
+            ->get('/manager/dashboard')
+            ->assertOk()
+            ->assertSeeTextInOrder([
+                'Location-vente',
+                'Payé ce mois',
+                '40 000 FCFA',
+                'Payé cette année',
+                '60 000 FCFA',
+                'Retards de paiement',
+                '2',
+                number_format($enRetard->fresh()->retard() + $autreRetard->fresh()->retard(), 0, ',', ' ').' FCFA',
+                'Performance des commerciaux',
+            ]);
+    }
+
     public function test_manager_cannot_open_commercial_pages(): void
     {
         $this->withSession($this->sessionDe('manager'))
@@ -137,6 +196,64 @@ class ManagerAccessTest extends TestCase
                 'role' => $role,
             ],
         ];
+    }
+
+    private function migrateLocationVente(): void
+    {
+        $this->artisan('migrate', ['--path' => [
+            'database/migrations/2026_10_03_000001_create_location_vente_tables.php',
+            'database/migrations/2026_10_03_000002_add_kyc_to_location_vente_livreurs.php',
+            'database/migrations/2026_10_03_000003_set_livreur_statut_default_inactif.php',
+            'database/migrations/2026_10_03_000004_make_moto_immatriculation_nullable.php',
+            'database/migrations/2026_10_03_000005_add_price_breakdown_to_location_vente_contrats.php',
+            'database/migrations/2026_10_15_000006_add_photo_carburant_cylindree_to_location_vente_motos.php',
+            'database/migrations/2026_10_15_000007_add_duree_and_date_fin_to_location_vente_contrats.php',
+        ]]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function contratLocationVente(array $overrides = []): Contrat
+    {
+        $rang = (Livreur::query()->count() + 1);
+        $livreur = Livreur::query()->create([
+            'nom' => 'Kone',
+            'prenoms' => 'Ibrahim',
+            'contact' => '070102030'.$rang,
+            'statut' => true,
+        ]);
+        $moto = Moto::query()->create([
+            'marque' => 'Haojue',
+            'modele' => 'HJ125',
+            'immatriculation' => 'AB 100'.$rang.' CI',
+            'statut' => Moto::STATUT_EN_LOCATION,
+        ]);
+
+        $contrat = Contrat::query()->create(array_merge([
+            'livreur_id' => $livreur->id,
+            'moto_id' => $moto->id,
+            'prix_total' => 100000,
+            'apport' => 0,
+            'montant_echeance' => 10000,
+            'frequence' => Contrat::FREQUENCE_HEBDOMADAIRE,
+            'date_debut' => '2026-10-01',
+            'statut' => Contrat::STATUT_EN_COURS,
+        ], $overrides));
+        $contrat->attribuerReference();
+
+        return $contrat;
+    }
+
+    private function paiementLocationVente(Contrat $contrat, int $montant, string $date): void
+    {
+        Paiement::query()->create([
+            'contrat_id' => $contrat->id,
+            'montant' => $montant,
+            'date_paiement' => $date,
+            'type' => Paiement::TYPE_ECHEANCE,
+            'mode' => 'Espèces',
+        ]);
     }
 
     /**

@@ -91,6 +91,49 @@
     <div class="col-12 mb-6">
       <div class="card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">Location-vente</h5>
+          <a href="{{ route('manager.contrats.index') }}" class="small">Voir les contrats</a>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <a href="{{ route('manager.paiements.index', ['du' => now()->startOfMonth()->toDateString(), 'au' => now()->endOfMonth()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body" style="background: #eef2ff;">
+                <span class="badge bg-primary rounded-pill me-3"><i class="bx bx-calendar"></i></span>
+                <div>
+                  <small class="d-block">Payé ce mois</small>
+                  <strong>{{ $fcfa($locationVente['paye_mois']) }}</strong>
+                </div>
+              </a>
+            </div>
+            <div class="col-md-4">
+              <a href="{{ route('manager.paiements.index', ['du' => now()->startOfYear()->toDateString(), 'au' => now()->endOfYear()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body" style="background: #e8f5e9;">
+                <span class="badge bg-success rounded-pill me-3"><i class="bx bx-wallet"></i></span>
+                <div>
+                  <small class="d-block">Payé cette année</small>
+                  <strong>{{ $fcfa($locationVente['paye_annee']) }}</strong>
+                </div>
+              </a>
+            </div>
+            <div class="col-md-4">
+              <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body" style="background: {{ $locationVente['retards'] > 0 ? '#fde8e8' : '#e8f5e9' }};">
+                <span class="badge bg-{{ $locationVente['retards'] > 0 ? 'danger' : 'success' }} rounded-pill me-3"><i class="bx bx-error"></i></span>
+                <div>
+                  <small class="d-block">Retards de paiement</small>
+                  <strong>{{ number_format($locationVente['retards'], 0, ',', ' ') }}</strong>
+                  <small class="d-block text-body-secondary">{{ $fcfa($locationVente['montant_retard']) }}</small>
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-12 mb-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="card-title mb-0">Performance des commerciaux</h5>
           <small class="text-body-secondary">{{ $stats['taux_livraison'] }}% de colis livrés au global</small>
         </div>

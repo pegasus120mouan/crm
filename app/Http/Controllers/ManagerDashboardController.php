@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Boutique;
 use App\Models\Commande;
 use App\Models\Commission;
+use App\Models\LocationVente\Contrat;
+use App\Models\LocationVente\Paiement;
 use App\Models\PaiementCommission;
 use App\Models\Utilisateur;
 use Carbon\Carbon;
@@ -130,13 +132,64 @@ class ManagerDashboardController extends Controller
             ->limit(6)
             ->get();
 
+        $locationVente = $this->statsLocationVente();
+
         return view('manager.dashboard', compact(
             'utilisateur',
             'stats',
             'parCommercial',
             'chartLabels',
             'chartData',
-            'dernieresCommandes'
+            'dernieresCommandes',
+            'locationVente'
         ));
+    }
+
+    /**
+     * Encaissements et retards des contrats de location-vente.
+     *
+     * @return array{paye_mois: int, paye_annee: int, retards: int, montant_retard: int}
+     */
+    private function statsLocationVente(): array
+    {
+        $vide = [
+            'paye_mois' => 0,
+            'paye_annee' => 0,
+            'retards' => 0,
+            'montant_retard' => 0,
+        ];
+
+        if (! Schema::hasTable('location_vente_paiements') || ! Schema::hasTable('location_vente_contrats')) {
+            return $vide;
+        }
+
+        $aujourdHui = Carbon::today();
+
+        $payeMois = (int) Paiement::query()
+            ->whereBetween('date_paiement', [
+                $aujourdHui->copy()->startOfMonth()->toDateString(),
+                $aujourdHui->copy()->endOfMonth()->toDateString(),
+            ])
+            ->sum('montant');
+
+        $payeAnnee = (int) Paiement::query()
+            ->whereBetween('date_paiement', [
+                $aujourdHui->copy()->startOfYear()->toDateString(),
+                $aujourdHui->copy()->endOfYear()->toDateString(),
+            ])
+            ->sum('montant');
+
+        $enRetard = Contrat::query()
+            ->enCours()
+            ->withSum('paiements', 'montant')
+            ->get()
+            ->filter(fn (Contrat $contrat) => $contrat->retard() > 0);
+
+        return [
+            'paye_mois' => $payeMois,
+            'paye_annee' => $payeAnnee,
+            'retards' => $enRetard->count(),
+            'montant_retard' => (int) $enRetard->sum(fn (Contrat $contrat) => $contrat->retard()),
+        ];
     }
 }
