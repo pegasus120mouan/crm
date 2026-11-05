@@ -242,6 +242,57 @@ class Contrat extends Model
         return Carbon::parse($dateDebut)->startOfDay()->addMonthsNoOverflow($dureeMois);
     }
 
+    public static function dateFinPourNombre(CarbonInterface|string $dateDebut, string $frequence, int $nombre): Carbon
+    {
+        $reference = new static([
+            'date_debut' => Carbon::parse($dateDebut)->toDateString(),
+            'frequence' => $frequence,
+            'montant_echeance' => 1,
+            'prix_total' => PHP_INT_MAX,
+            'apport' => 0,
+        ]);
+
+        return $reference->dateEcheance(max(0, $nombre));
+    }
+
+    /** Plus petit nombre de mois tel que début + durée couvre la date de fin. */
+    public static function dureeMoisCouvrant(CarbonInterface|string $dateDebut, CarbonInterface|string $dateFin): int
+    {
+        $fin = Carbon::parse($dateFin)->startOfDay();
+        $mois = 1;
+
+        while ($mois < 120 && static::dateFinDepuisDuree($dateDebut, $mois)->lt($fin)) {
+            $mois++;
+        }
+
+        return $mois;
+    }
+
+    /**
+     * Le total saisi fixe le nombre d'échéances, puis la date de fin et la durée.
+     *
+     * @return array{nombre: int, date_fin: Carbon, duree_mois: int}
+     */
+    public static function conditionsDepuisTotal(
+        CarbonInterface|string $dateDebut,
+        string $frequence,
+        int $apport,
+        int $montantEcheance,
+        int $prixTotal
+    ): array {
+        $reste = $prixTotal - $apport;
+        $nombre = $montantEcheance > 0 && $reste > 0 ? (int) ceil($reste / $montantEcheance) : 0;
+        $dateFin = $nombre > 0
+            ? static::dateFinPourNombre($dateDebut, $frequence, $nombre)
+            : Carbon::parse($dateDebut)->startOfDay();
+
+        return [
+            'nombre' => $nombre,
+            'date_fin' => $dateFin,
+            'duree_mois' => $nombre > 0 ? static::dureeMoisCouvrant($dateDebut, $dateFin) : 1,
+        ];
+    }
+
     public function cumulAttendu(int $numero): int
     {
         return min($this->prix_total, $this->apport + $numero * $this->montant_echeance);

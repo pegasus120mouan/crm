@@ -301,18 +301,18 @@
             @endphp
             <p class="text-muted small mb-3">
               Montant à verser (ex. 4&nbsp;000 / jour) saisi à la main.
-              Fréquence journalier ou hebdomadaire (×&nbsp;{{ $joursSemaine }}), durée en mois :
-              nombre d'échéances, total à rembourser et notre marge se calculent automatiquement.
+              Le total à rembourser est modifiable : le nombre d'échéances et la date de fin suivent.
+              Changer la durée, la fréquence, l'apport ou le montant à verser recalcule ce total.
             </p>
             <div class="row g-3">
               <div class="col-md-6">
                 <label class="form-label" for="editPrixAcquisition">Prix d'acquisition (FCFA)</label>
-                <input type="number" class="form-control js-edit-calcul" name="prix_acquisition" id="editPrixAcquisition" min="0"
+                <input type="number" class="form-control js-edit-marge" name="prix_acquisition" id="editPrixAcquisition" min="0"
                   value="{{ old('prix_acquisition', $contrat->prixAcquisitionMoto()) }}" required>
               </div>
               <div class="col-md-6">
                 <label class="form-label" for="editCout">Coût supplémentaire (FCFA)</label>
-                <input type="number" class="form-control js-edit-calcul" name="cout_supplementaire" id="editCout" min="0"
+                <input type="number" class="form-control js-edit-marge" name="cout_supplementaire" id="editCout" min="0"
                   value="{{ old('cout_supplementaire', $contrat->cout_supplementaire) }}">
               </div>
               <div class="col-md-4">
@@ -347,7 +347,7 @@
               <div class="col-md-4">
                 <label class="form-label" for="editDateFin">Date de fin</label>
                 <input type="date" class="form-control" id="editDateFin" value="" readonly>
-                <small class="text-muted">Calculée : début + durée.</small>
+                <small class="text-muted">Date de la dernière échéance.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editEcheance">Montant de chaque échéance (FCFA)</label>
@@ -357,12 +357,13 @@
               <div class="col-md-4">
                 <label class="form-label" for="editNombreEcheances">Nombre d'échéances</label>
                 <input type="text" class="form-control" id="editNombreEcheances" value="" readonly>
-                <small class="text-muted">Auto selon durée et fréquence (6j/7).</small>
+                <small class="text-muted">Selon le total et le montant de l'échéance.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editPrixTotal">Total à rembourser (FCFA)</label>
-                <input type="text" class="form-control" id="editPrixTotal" value="" readonly>
-                <small class="text-muted">Apport + échéance × nombre.</small>
+                <input type="number" class="form-control" name="prix_total" id="editPrixTotal" min="1" step="1"
+                  value="{{ old('prix_total', $contrat->prix_total) }}" required>
+                <small class="text-muted">Modifiable. Ajuste le nombre d'échéances et la date de fin.</small>
               </div>
               <div class="col-12">
                 <div class="alert alert-success mb-0 py-2" id="editMargeApercu">Notre marge : —</div>
@@ -428,12 +429,64 @@
           d.setDate(d.getDate() + 7 * numero);
           return d;
         }
-        var restant = numero;
-        while (restant > 0) {
+        if (numero <= 0) return d;
+        var semaines = Math.floor((numero - 1) / JOURS);
+        d.setDate(d.getDate() + 7 * semaines);
+        for (var restant = numero - semaines * JOURS; restant > 0;) {
           d.setDate(d.getDate() + 1);
           if (d.getDay() !== 0) restant--;
         }
         return d;
+      }
+
+      function moisCouvrant(debutIso, finIso) {
+        var mois = 1;
+        while (mois < 120 && ajouterMois(debutIso, mois) < finIso) mois++;
+        return mois;
+      }
+
+      function montantEcheance() {
+        var v = parseInt(montantAVerser.value, 10) || 0;
+        return frequence.value === 'hebdomadaire' ? v * JOURS : v;
+      }
+
+      function afficher(e, n, t) {
+        var a = parseInt(acquisition.value, 10) || 0;
+        var c = parseInt(cout.value, 10) || 0;
+        var marge = t - a;
+        echeance.value = e > 0 ? format(e) : '—';
+        nombre.value = n > 0 ? String(n) : '—';
+        apercu.className = 'alert ' + (marge >= 0 ? 'alert-success' : 'alert-danger') + ' mb-0 py-2';
+        apercu.innerHTML = 'Notre marge : <strong>' + format(marge) + '</strong>' +
+          (n > 0 ? ' · ' + format(Math.trunc(marge / n)) + ' / échéance × ' + n : '') +
+          (c > 0 ? ' <span class="text-muted">(dont coût supp. ' + format(c) + ')</span>' : '');
+      }
+
+      function depuisDuree() {
+        var e = montantEcheance();
+        var ap = parseInt(apport.value, 10) || 0;
+        var mois = parseInt(duree.value, 10) || 0;
+        var n = debut.value && mois > 0 ? nombreSurPeriode(debut.value, mois, frequence.value) : 0;
+        var t = ap + (e * n);
+        fin.value = n > 0 && debut.value ? formatIso(dateEcheance(debut.value, frequence.value, n)) : '';
+        total.value = t > 0 ? String(t) : '';
+        afficher(e, n, t);
+      }
+
+      function depuisTotal() {
+        var e = montantEcheance();
+        var ap = parseInt(apport.value, 10) || 0;
+        var t = parseInt(total.value, 10) || 0;
+        var base = t - ap;
+        var n = e > 0 && base > 0 ? Math.ceil(base / e) : 0;
+        if (debut.value && n > 0) {
+          var finIso = formatIso(dateEcheance(debut.value, frequence.value, n));
+          fin.value = finIso;
+          duree.value = String(moisCouvrant(debut.value, finIso));
+        } else {
+          fin.value = '';
+        }
+        afficher(e, n, t);
       }
 
       function nombreSurPeriode(debutIso, mois, freq) {
@@ -448,31 +501,17 @@
         return n;
       }
 
-      function recalculer() {
-        var a = parseInt(acquisition.value, 10) || 0;
-        var c = parseInt(cout.value, 10) || 0;
-        var ap = parseInt(apport.value, 10) || 0;
-        var v = parseInt(montantAVerser.value, 10) || 0;
-        var e = frequence.value === 'hebdomadaire' ? v * JOURS : v;
-        var mois = parseInt(duree.value, 10) || 0;
-        var n = debut.value && mois > 0 ? nombreSurPeriode(debut.value, mois, frequence.value) : 0;
-        var t = ap + (e * n);
-        var marge = t - a;
-        fin.value = debut.value && mois > 0 ? ajouterMois(debut.value, mois) : '';
-        echeance.value = e > 0 ? format(e) : '—';
-        nombre.value = n > 0 ? String(n) : '—';
-        total.value = t > 0 ? format(t) : '—';
-        apercu.className = 'alert ' + (marge >= 0 ? 'alert-success' : 'alert-danger') + ' mb-0 py-2';
-        apercu.innerHTML = 'Notre marge : <strong>' + format(marge) + '</strong>' +
-          (n > 0 ? ' · ' + format(Math.trunc(marge / n)) + ' / échéance × ' + n : '') +
-          (c > 0 ? ' <span class="text-muted">(dont coût supp. ' + format(c) + ')</span>' : '');
-      }
-
       form.querySelectorAll('.js-edit-calcul').forEach(function (el) {
-        el.addEventListener('input', recalculer);
-        el.addEventListener('change', recalculer);
+        el.addEventListener('input', depuisDuree);
+        el.addEventListener('change', depuisDuree);
       });
-      recalculer();
+      form.querySelectorAll('.js-edit-marge').forEach(function (el) {
+        el.addEventListener('input', depuisTotal);
+        el.addEventListener('change', depuisTotal);
+      });
+      total.addEventListener('input', depuisTotal);
+      total.addEventListener('change', depuisTotal);
+      depuisTotal();
 
       @if ($errors->any() && old('_formulaire') === 'modifier_contrat')
         bootstrap.Modal.getOrCreateInstance(modal).show();

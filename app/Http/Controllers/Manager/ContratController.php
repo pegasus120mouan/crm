@@ -164,6 +164,7 @@ class ContratController extends Controller
             'frequence' => ['required', Rule::in(array_keys(Contrat::FREQUENCES))],
             'date_debut' => ['required', 'date'],
             'duree_mois' => ['required', 'integer', 'min:1', 'max:120'],
+            'prix_total' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $validated['cout_supplementaire'] = (int) ($validated['cout_supplementaire'] ?? 0);
@@ -172,28 +173,64 @@ class ContratController extends Controller
         $validated['montant_a_verser'] = (int) $validated['montant_a_verser'];
         $validated['duree_mois'] = (int) $validated['duree_mois'];
 
-        $nombreEcheances = Contrat::nombreEcheancesSurPeriode(
-            $validated['date_debut'],
-            $validated['duree_mois'],
-            $validated['frequence']
-        );
-        if ($nombreEcheances < 1) {
-            throw ValidationException::withMessages([
-                'duree_mois' => 'La durée doit couvrir au moins une échéance selon la fréquence choisie.',
-            ]);
-        }
-
         $montantEcheance = Contrat::montantEcheanceDepuisVersement($validated['montant_a_verser'], $validated['frequence']);
-        $prixTotal = $validated['apport'] + ($montantEcheance * $nombreEcheances);
+        $prixTotalSaisi = array_key_exists('prix_total', $validated) && $validated['prix_total'] !== null
+            ? (int) $validated['prix_total']
+            : null;
+
+        if ($prixTotalSaisi !== null) {
+            if ($validated['apport'] >= $prixTotalSaisi) {
+                throw ValidationException::withMessages([
+                    'prix_total' => "Le total à rembourser doit être supérieur à l'apport.",
+                ]);
+            }
+
+            $conditions = Contrat::conditionsDepuisTotal(
+                $validated['date_debut'],
+                $validated['frequence'],
+                $validated['apport'],
+                $montantEcheance,
+                $prixTotalSaisi
+            );
+
+            if ($conditions['nombre'] < 1) {
+                throw ValidationException::withMessages([
+                    'prix_total' => 'Le total doit couvrir au moins une échéance.',
+                ]);
+            }
+
+            if ($conditions['duree_mois'] > 120) {
+                throw ValidationException::withMessages([
+                    'prix_total' => 'Ce total implique plus de 120 mois d\'échéances.',
+                ]);
+            }
+
+            $prixTotal = $prixTotalSaisi;
+            $validated['duree_mois'] = $conditions['duree_mois'];
+            $dateFin = $conditions['date_fin'];
+        } else {
+            $nombreEcheances = Contrat::nombreEcheancesSurPeriode(
+                $validated['date_debut'],
+                $validated['duree_mois'],
+                $validated['frequence']
+            );
+            if ($nombreEcheances < 1) {
+                throw ValidationException::withMessages([
+                    'duree_mois' => 'La durée doit couvrir au moins une échéance selon la fréquence choisie.',
+                ]);
+            }
+
+            $prixTotal = $validated['apport'] + ($montantEcheance * $nombreEcheances);
+            $dateFin = Contrat::dateFinDepuisDuree($validated['date_debut'], $validated['duree_mois']);
+        }
 
         $dejaPaye = $contrat->montantPaye();
         if ($prixTotal < $dejaPaye) {
+            $champ = $prixTotalSaisi !== null ? 'prix_total' : 'montant_a_verser';
             throw ValidationException::withMessages([
-                'montant_a_verser' => 'Le total à rembourser ('.$prixTotal.' FCFA) ne peut pas être inférieur aux '.$dejaPaye.' FCFA déjà encaissés.',
+                $champ => 'Le total à rembourser ('.number_format($prixTotal, 0, ',', ' ').' FCFA) ne peut pas être inférieur aux '.number_format($dejaPaye, 0, ',', ' ').' FCFA déjà encaissés.',
             ]);
         }
-
-        $dateFin = Contrat::dateFinDepuisDuree($validated['date_debut'], $validated['duree_mois']);
         $marge = $prixTotal - $validated['prix_acquisition'] - $validated['cout_supplementaire'];
 
         DB::transaction(function () use ($contrat, $validated, $dateFin, $marge, $prixTotal, $montantEcheance) {

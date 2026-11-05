@@ -402,6 +402,75 @@ class LocationVenteTest extends TestCase
         $this->assertSame(244000, $contrat->notreMarge());
     }
 
+    public function test_editing_the_total_to_repay_resizes_the_schedule_and_end_date(): void
+    {
+        $contrat = $this->contrat([
+            'date_debut' => '2026-10-15',
+            'prix_total' => 624000,
+            'montant_echeance' => 24000,
+            'apport' => 0,
+            'frequence' => 'hebdomadaire',
+            'duree_mois' => 6,
+            'date_fin' => '2027-04-15',
+        ]);
+        $contrat->moto->update(['prix_achat' => 380000]);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 380000,
+            'cout_supplementaire' => 0,
+            'apport' => 0,
+            'montant_a_verser' => 4000,
+            'frequence' => 'hebdomadaire',
+            'date_debut' => '2026-10-15',
+            'duree_mois' => 6,
+            'prix_total' => 720000,
+        ])->assertRedirect(route('manager.contrats.show', $contrat));
+
+        $contrat->refresh();
+        $this->assertSame(720000, $contrat->prix_total);
+        $this->assertSame(30, $contrat->nombreEcheances());
+        $this->assertSame('2027-05-13', $contrat->date_fin->toDateString());
+        $this->assertSame(7, $contrat->duree_mois);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 380000,
+            'cout_supplementaire' => 0,
+            'apport' => 0,
+            'montant_a_verser' => 4000,
+            'frequence' => 'hebdomadaire',
+            'date_debut' => '2026-10-15',
+            'duree_mois' => 7,
+            'prix_total' => 480000,
+        ])->assertRedirect(route('manager.contrats.show', $contrat));
+
+        $contrat->refresh();
+        $this->assertSame(480000, $contrat->prix_total);
+        $this->assertSame(20, $contrat->nombreEcheances());
+        $this->assertSame('2027-03-04', $contrat->date_fin->toDateString());
+        $this->assertSame(5, $contrat->duree_mois);
+    }
+
+    public function test_total_to_repay_cannot_be_lower_than_amount_already_paid(): void
+    {
+        $contrat = $this->contrat(['prix_total' => 100000, 'montant_echeance' => 10000, 'frequence' => 'hebdomadaire']);
+        $contrat->paiements()->create(['montant' => 40000, 'date_paiement' => '2026-10-02', 'mode' => 'Espèces']);
+
+        $this->asManager()->from(route('manager.contrats.show', $contrat))
+            ->put(route('manager.contrats.update', $contrat), [
+                'prix_acquisition' => 0,
+                'cout_supplementaire' => 0,
+                'apport' => 0,
+                'montant_a_verser' => 4000,
+                'frequence' => 'hebdomadaire',
+                'date_debut' => '2026-10-15',
+                'duree_mois' => 6,
+                'prix_total' => 24000,
+            ])
+            ->assertSessionHasErrors('prix_total');
+
+        $this->assertSame(100000, $contrat->fresh()->prix_total);
+    }
+
     public function test_daily_installments_count_working_days_over_duration(): void
     {
         $nombre = Contrat::nombreEcheancesSurPeriode('2026-10-15', 6, 'journalier');
