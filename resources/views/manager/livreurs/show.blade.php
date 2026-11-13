@@ -65,6 +65,36 @@
           <div class="card-body pt-3"><small class="text-muted" style="white-space: pre-line;">{{ $livreur->notes }}</small></div>
         @endif
       </div>
+
+      <div class="card mt-4">
+        <div class="card-header">
+          <h5 class="mb-0">Identifiants de l'application</h5>
+        </div>
+        <div class="card-body">
+          @if ($livreur->aDesIdentifiants())
+            <p class="small mb-3">Login actuel : <strong>{{ $livreur->login }}</strong>. Le code OTP n'est plus affiché. Saisissez-en un nouveau pour le remplacer, ou laissez le champ vide pour en générer un.</p>
+          @else
+            <p class="small text-muted mb-3">Aucun identifiant. Le livreur ne peut pas encore se connecter à l'application.</p>
+          @endif
+          <form action="{{ route('manager.livreurs.identifiants', $livreur) }}" method="POST">
+            @csrf
+            @method('PUT')
+            <div class="mb-3">
+              <label class="form-label" for="loginLivreur">Login</label>
+              <input type="text" class="form-control @error('login') is-invalid @enderror" id="loginLivreur" name="login" value="{{ old('login', $livreur->login ?: $livreur->contact) }}" maxlength="255" required autocomplete="off">
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="codeOtpLivreur">{{ $livreur->aDesIdentifiants() ? 'Nouveau code OTP' : 'Code OTP' }}</label>
+              <div class="input-group">
+                <input type="text" inputmode="numeric" pattern="[0-9]{6}" class="form-control @error('code_otp') is-invalid @enderror" id="codeOtpLivreur" name="code_otp" minlength="6" maxlength="6" autocomplete="off" placeholder="Laisser vide pour générer">
+                <button type="button" class="btn btn-outline-secondary" id="genererCodeOtpLivreur">Générer</button>
+              </div>
+              <small class="text-muted">6 chiffres. Il sera affiché une seule fois après l'enregistrement.</small>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">{{ $livreur->aDesIdentifiants() ? 'Réinitialiser les identifiants' : 'Créer les identifiants' }}</button>
+          </form>
+        </div>
+      </div>
     </div>
 
     <div class="col-lg-8 mb-4">
@@ -344,6 +374,13 @@
 
   @include('manager._confirmation')
   @include('manager.livreurs._script_photo')
+  <script>
+    document.getElementById('genererCodeOtpLivreur')?.addEventListener('click', () => {
+      const octets = new Uint8Array(6);
+      crypto.getRandomValues(octets);
+      document.getElementById('codeOtpLivreur').value = Array.from(octets, (octet) => String(octet % 10)).join('');
+    });
+  </script>
   @if ($peutRecevoirUneMoto)
     @include('manager.contrats._modal_nouveau')
   @endif

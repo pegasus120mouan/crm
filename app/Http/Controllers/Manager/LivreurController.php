@@ -125,6 +125,26 @@ class LivreurController extends Controller
         return redirect()->route('manager.livreurs.index')->with('success', 'Livreur supprimé avec succès');
     }
 
+    public function identifiants(Request $request, Livreur $livreur)
+    {
+        $request->merge([
+            'login' => trim((string) $request->input('login')),
+        ]);
+
+        $validated = $request->validate([
+            'login' => ['required', 'string', 'max:255', Rule::unique('location_vente_livreurs', 'login')->ignore($livreur->id)],
+            'code_otp' => ['nullable', 'digits:6'],
+        ]);
+
+        $codeOtp = $validated['code_otp'] ?? $this->genererCodeOtp();
+        $livreur->enregistrerIdentifiants($validated['login'], $codeOtp);
+
+        return back()->with(
+            'success',
+            'Identifiants de '.$livreur->nomComplet().' : login '.$livreur->login.', code OTP '.$codeOtp.'. Communiquez-les au livreur, ils ne seront plus affichés.'
+        );
+    }
+
     public function toggleStatut(Livreur $livreur)
     {
         if (! $livreur->statut && ! $livreur->kycAccepte()) {
@@ -208,6 +228,11 @@ class LivreurController extends Controller
         return back()->with('success', $accepte
             ? 'KYC accepté : le livreur est maintenant actif.'
             : 'KYC rejeté : le livreur est inactif.');
+    }
+
+    private function genererCodeOtp(): string
+    {
+        return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     }
 
     private function enregistrerFichiers(Request $request, Livreur $livreur): void

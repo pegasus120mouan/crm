@@ -37,6 +37,7 @@ class LivreurKycTest extends TestCase
             'database/migrations/2026_10_03_000005_add_price_breakdown_to_location_vente_contrats.php',
             'database/migrations/2026_10_15_000006_add_photo_carburant_cylindree_to_location_vente_motos.php',
             'database/migrations/2026_10_15_000007_add_duree_and_date_fin_to_location_vente_contrats.php',
+            'database/migrations/2026_11_13_192510_add_credentials_to_location_vente_livreurs.php',
         ]]);
     }
 
@@ -276,6 +277,74 @@ class LivreurKycTest extends TestCase
             ->assertSee('Rejeter')
             ->assertSee('CI0012345')
             ->assertSee("Pièce d'identité – recto");
+    }
+
+    public function test_manager_can_create_and_reset_livreur_credentials(): void
+    {
+        $livreur = Livreur::create(['nom' => 'Kone', 'prenoms' => 'Ibrahim', 'contact' => '0701020304', 'statut' => true]);
+        $autre = Livreur::create(['nom' => 'Yao', 'prenoms' => 'Paul', 'contact' => '0505', 'statut' => true]);
+        $autre->enregistrerIdentifiants('paul', '654321');
+
+        $this->asManager()->get('/manager/livreurs/'.$livreur->id)
+            ->assertOk()
+            ->assertSee('Créer les identifiants')
+            ->assertSee('value="0701020304"', false);
+
+        $this->asManager()
+            ->put('/manager/livreurs/'.$livreur->id.'/identifiants', [
+                'login' => '  ibrahim  ',
+                'code_otp' => '123456',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $livreur->refresh();
+        $this->assertSame('ibrahim', $livreur->login);
+        $this->assertSame(hash('sha256', '123456'), $livreur->code_otp);
+        $this->assertTrue($livreur->aDesIdentifiants());
+
+        $this->asManager()->get('/manager/livreurs/'.$livreur->id)
+            ->assertOk()
+            ->assertSee('Réinitialiser les identifiants')
+            ->assertSee('ibrahim')
+            ->assertSee('code OTP 123456')
+            ->assertDontSee(hash('sha256', '123456'));
+
+        $this->asManager()->get('/manager/livreurs/'.$livreur->id)
+            ->assertOk()
+            ->assertDontSee('123456');
+
+        $this->asManager()->from('/manager/livreurs/'.$livreur->id)
+            ->put('/manager/livreurs/'.$livreur->id.'/identifiants', [
+                'login' => 'paul',
+                'code_otp' => '111111',
+            ])
+            ->assertSessionHasErrors('login');
+
+        $this->asManager()->from('/manager/livreurs/'.$livreur->id)
+            ->put('/manager/livreurs/'.$livreur->id.'/identifiants', [
+                'login' => 'ibrahim',
+                'code_otp' => '12345',
+            ])
+            ->assertSessionHasErrors('code_otp');
+
+        $reponse = $this->asManager()->put('/manager/livreurs/'.$livreur->id.'/identifiants', [
+            'login' => 'ibrahim',
+        ]);
+        $reponse->assertSessionHas('success');
+
+        preg_match('/code OTP (\d{6})/', (string) session('success'), $correspondance);
+        $this->assertNotEmpty($correspondance[1] ?? null);
+        $this->assertSame(hash('sha256', $correspondance[1]), $livreur->fresh()->code_otp);
+
+        $this->withSession(['utilisateur' => ['id' => 2, 'login' => 'pauline', 'role' => 'commercial']])
+            ->put('/manager/livreurs/'.$livreur->id.'/identifiants', [
+                'login' => 'pirate',
+                'code_otp' => '000000',
+            ])
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertSame('ibrahim', $livreur->fresh()->login);
     }
 
     private function asManager(): static

@@ -34,6 +34,7 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::get('/livreurs/{livreur}/documents/{document}', [Manager\LivreurController::class, 'document'])->name('livreurs.documents.show');
     Route::delete('/livreurs/{livreur}/documents/{document}', [Manager\LivreurController::class, 'destroyDocument'])->name('livreurs.documents.destroy');
     Route::patch('/livreurs/{livreur}/kyc', [Manager\LivreurController::class, 'decisionKyc'])->name('livreurs.kyc');
+    Route::put('/livreurs/{livreur}/identifiants', [Manager\LivreurController::class, 'identifiants'])->name('livreurs.identifiants');
     Route::put('/livreurs/{livreur}', [Manager\LivreurController::class, 'update'])->name('livreurs.update');
     Route::delete('/livreurs/{livreur}', [Manager\LivreurController::class, 'destroy'])->name('livreurs.destroy');
     Route::patch('/livreurs/{livreur}/statut', [Manager\LivreurController::class, 'toggleStatut'])->name('livreurs.toggle-statut');

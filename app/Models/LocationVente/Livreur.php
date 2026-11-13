@@ -52,6 +52,8 @@ class Livreur extends Model
 
     protected $fillable = [
         'code',
+        'login',
+        'code_otp',
         'photo',
         'nom',
         'prenoms',
@@ -71,6 +73,10 @@ class Livreur extends Model
         'kyc_verifie_par',
         'kyc_motif_rejet',
         'notes',
+    ];
+
+    protected $hidden = [
+        'code_otp',
     ];
 
     protected $attributes = [
@@ -210,6 +216,19 @@ class Livreur extends Model
     public function kycAccepte(): bool
     {
         return $this->kyc_statut === self::KYC_VALIDE;
+    }
+
+    public function aDesIdentifiants(): bool
+    {
+        return filled($this->login) && filled($this->code_otp);
+    }
+
+    public function enregistrerIdentifiants(string $login, string $codeOtp): void
+    {
+        $this->update([
+            'login' => $login,
+            'code_otp' => hash('sha256', $codeOtp),
+        ]);
     }
 
     /**
