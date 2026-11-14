@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manager;
 use App\Http\Controllers\Controller;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
+use App\Models\LocationVente\MotoDocument;
 use App\Models\LocationVente\MotoPhoto;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -110,6 +111,94 @@ class MotoController extends Controller
         return redirect()
             ->route('manager.motos.show', $moto)
             ->with('success', 'Images de la moto modifiées.');
+    }
+
+    public function enregistrerPapiers(Request $request, Moto $moto)
+    {
+        $existants = $moto->documentsParType();
+        $regles = ['documents' => ['nullable', 'array']];
+        $messages = [];
+        $periodes = [
+            MotoDocument::TYPE_ASSURANCE => "de l'assurance",
+            MotoDocument::TYPE_VIGNETTE => 'de la vignette',
+        ];
+
+        foreach ($periodes as $type => $de) {
+            $fichierDejaPresent = filled($existants[$type]->chemin ?? null);
+            $periodeObligatoire = fn () => $request->hasFile("documents.{$type}.fichier")
+                || $fichierDejaPresent
+                || $request->filled("documents.{$type}.date_debut")
+                || $request->filled("documents.{$type}.date_fin");
+
+            $regles["documents.{$type}.date_debut"] = ['nullable', 'date', Rule::requiredIf($periodeObligatoire)];
+            $regles["documents.{$type}.date_fin"] = ['nullable', 'date', "after_or_equal:documents.{$type}.date_debut", Rule::requiredIf($periodeObligatoire)];
+            $regles["documents.{$type}.fichier"] = ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'];
+            $messages["documents.{$type}.date_debut.required"] = "La date de début {$de} est obligatoire.";
+            $messages["documents.{$type}.date_fin.required"] = "La date de fin {$de} est obligatoire.";
+            $messages["documents.{$type}.date_fin.after_or_equal"] = "La date de fin {$de} doit être postérieure ou égale à la date de début.";
+            $messages["documents.{$type}.fichier.mimes"] = ucfirst(MotoDocument::TYPES[$type]).' : le fichier doit être une image (JPG, PNG, WEBP) ou un PDF.';
+            $messages["documents.{$type}.fichier.max"] = ucfirst(MotoDocument::TYPES[$type]).' : le fichier ne doit pas dépasser 5 Mo.';
+        }
+
+        $regles['documents.carte_grise.numero'] = ['nullable', 'string', 'max:50'];
+        $regles['documents.carte_grise.fichier'] = ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'];
+        $messages['documents.carte_grise.numero.max'] = 'Le n° de plaque ne doit pas dépasser 50 caractères.';
+        $messages['documents.carte_grise.fichier.mimes'] = 'Carte grise : le fichier doit être une image (JPG, PNG, WEBP) ou un PDF.';
+        $messages['documents.carte_grise.fichier.max'] = 'Carte grise : le fichier ne doit pas dépasser 5 Mo.';
+
+        if ($request->exists('documents.carte_grise.numero')) {
+            $numero = strtoupper(trim((string) $request->input('documents.carte_grise.numero')));
+            $request->merge([
+                'documents' => array_merge($request->input('documents', []), [
+                    'carte_grise' => array_merge($request->input('documents.carte_grise', []), [
+                        'numero' => $numero === '' ? null : $numero,
+                    ]),
+                ]),
+            ]);
+        }
+
+        $validated = $request->validate($regles, $messages);
+        $documents = $validated['documents'] ?? [];
+        $saisies = [];
+
+        foreach (array_keys($periodes) as $type) {
+            $dateDebut = $documents[$type]['date_debut'] ?? null;
+            $dateFin = $documents[$type]['date_fin'] ?? null;
+            if ($dateDebut === null && $dateFin === null && ! $request->hasFile("documents.{$type}.fichier")) {
+                continue;
+            }
+
+            $saisie = [
+                'date_debut' => $dateDebut,
+                'date_fin' => $dateFin,
+            ];
+            if ($request->hasFile("documents.{$type}.fichier")) {
+                $saisie['fichier'] = $request->file("documents.{$type}.fichier");
+            }
+            $saisies[$type] = $saisie;
+        }
+
+        $numeroCarte = $documents['carte_grise']['numero'] ?? null;
+        $carteExistante = $existants[MotoDocument::TYPE_CARTE_GRISE] ?? null;
+        if ($numeroCarte !== null || $request->hasFile('documents.carte_grise.fichier') || filled($carteExistante?->chemin)) {
+            $saisie = ['numero' => $numeroCarte];
+            if ($request->hasFile('documents.carte_grise.fichier')) {
+                $saisie['fichier'] = $request->file('documents.carte_grise.fichier');
+            }
+            if ($numeroCarte !== null || isset($saisie['fichier']) || filled($carteExistante?->chemin)) {
+                $saisies[MotoDocument::TYPE_CARTE_GRISE] = $saisie;
+            }
+        }
+
+        if ($saisies === []) {
+            return back()->with('error', 'Renseignez au moins une date ou une image.');
+        }
+
+        $moto->enregistrerDocuments($saisies);
+
+        return redirect()
+            ->route('manager.motos.show', $moto)
+            ->with('success', 'Documents enregistrés.');
     }
 
     public function photo(Moto $moto, string $face)

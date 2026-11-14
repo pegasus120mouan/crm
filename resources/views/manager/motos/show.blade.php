@@ -63,6 +63,13 @@
                   </div>
                 @endif
                 <div class="small fw-medium">{{ \App\Models\LocationVente\MotoDocument::TYPES[$type] }}</div>
+                @if ($type === \App\Models\LocationVente\MotoDocument::TYPE_CARTE_GRISE)
+                  <div class="small text-muted">{{ $document?->numero ?: 'N° à renseigner' }}</div>
+                @elseif ($document?->date_debut && $document?->date_fin)
+                  <div class="small text-muted">{{ $document->date_debut->format('d-m-y') }} → {{ $document->date_fin->format('d-m-y') }}</div>
+                @else
+                  <div class="small text-muted">Dates à renseigner</div>
+                @endif
               </div>
             @endforeach
           </div>
@@ -82,6 +89,54 @@
               </div>
             @endforeach
             <button type="submit" class="btn btn-info text-white mt-2">Modifier les images de la moto</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header"><h6 class="mb-0">Assurance, vignette et carte grise</h6></div>
+        <div class="card-body">
+          <form action="{{ route('manager.motos.papiers', $moto) }}" method="POST" enctype="multipart/form-data">
+            @csrf
+            @foreach ([
+                \App\Models\LocationVente\MotoDocument::TYPE_ASSURANCE => 'Assurance',
+                \App\Models\LocationVente\MotoDocument::TYPE_VIGNETTE => 'Vignette',
+            ] as $type => $libelle)
+              @php($document = $papiers[$type] ?? null)
+              <div class="fw-medium mb-2">{{ $libelle }}</div>
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="date-debut-{{ $type }}">Date début</label>
+                  <input type="date" id="date-debut-{{ $type }}" class="form-control" name="documents[{{ $type }}][date_debut]" value="{{ old('documents.'.$type.'.date_debut', $document?->date_debut?->format('Y-m-d')) }}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="date-fin-{{ $type }}">Date fin</label>
+                  <input type="date" id="date-fin-{{ $type }}" class="form-control" name="documents[{{ $type }}][date_fin]" value="{{ old('documents.'.$type.'.date_fin', $document?->date_fin?->format('Y-m-d')) }}">
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-1" for="fichier-{{ $type }}">Image</label>
+                  <input type="file" id="fichier-{{ $type }}" class="form-control" name="documents[{{ $type }}][fichier]" accept="image/jpeg,image/png,image/webp,application/pdf" aria-label="Image {{ $libelle }}">
+                  @if ($document?->chemin)
+                    <div class="form-text">Image déjà enregistrée. Un nouveau fichier la remplace.</div>
+                  @endif
+                </div>
+              </div>
+            @endforeach
+
+            @php($carteGrise = $papiers[\App\Models\LocationVente\MotoDocument::TYPE_CARTE_GRISE] ?? null)
+            <div class="fw-medium mb-2">Carte grise</div>
+            <div class="mb-2">
+              <label class="form-label small mb-1" for="numero-carte-grise">N° de plaque</label>
+              <input type="text" id="numero-carte-grise" class="form-control" name="documents[carte_grise][numero]" value="{{ old('documents.carte_grise.numero', $carteGrise?->numero) }}" maxlength="50">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small mb-1" for="fichier-carte-grise">Image</label>
+              <input type="file" id="fichier-carte-grise" class="form-control" name="documents[carte_grise][fichier]" accept="image/jpeg,image/png,image/webp,application/pdf" aria-label="Image carte grise">
+              @if ($carteGrise?->chemin)
+                <div class="form-text">Image déjà enregistrée. Un nouveau fichier la remplace.</div>
+              @endif
+            </div>
+            <button type="submit" class="btn btn-info text-white">Enregistrer les documents</button>
           </form>
         </div>
       </div>

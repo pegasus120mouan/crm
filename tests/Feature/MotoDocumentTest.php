@@ -147,9 +147,22 @@ class MotoDocumentTest extends TestCase
             ->assertSee('Noir')
             ->assertSee('2024-06-11')
             ->assertSee('Modifier les images de la moto')
+            ->assertSee('Enregistrer les documents')
+            ->assertSee('Date début')
             ->assertSee('Assurance')
             ->assertSee('Vignette')
             ->assertSee('Carte grise');
+
+        $this->asManager()->from(route('manager.motos.show', $moto))
+            ->post(route('manager.motos.papiers', $moto), [
+                'documents' => [
+                    'vignette' => [
+                        'date_debut' => '2026-03-01',
+                        'fichier' => UploadedFile::fake()->image('vignette.jpg'),
+                    ],
+                ],
+            ])->assertSessionHasErrors('documents.vignette.date_fin');
+        $this->assertSame(0, $moto->documents()->count());
 
         $this->asManager()->post(route('manager.motos.photos', $moto), [
             'photos' => ['droite' => UploadedFile::fake()->image('droite.jpg')],
@@ -159,18 +172,38 @@ class MotoDocumentTest extends TestCase
         Storage::disk(Moto::DISQUE)->assertExists($photo->chemin);
         $this->asManager()->get(route('manager.motos.photo', [$moto, 'droite']))->assertOk();
 
-        $moto->enregistrerDocuments([
-            'assurance' => [
-                'date_debut' => '2026-01-01',
-                'date_fin' => '2026-12-31',
-                'fichier' => UploadedFile::fake()->image('assurance.jpg'),
+        $this->asManager()->post(route('manager.motos.papiers', $moto), [
+            'documents' => [
+                'assurance' => [
+                    'date_debut' => '2026-01-01',
+                    'date_fin' => '2026-12-31',
+                    'fichier' => UploadedFile::fake()->image('assurance.jpg'),
+                ],
+                'vignette' => [
+                    'date_debut' => '2026-03-01',
+                    'date_fin' => '2027-02-28',
+                ],
+                'carte_grise' => [
+                    'numero' => 'ab-1234',
+                    'fichier' => UploadedFile::fake()->image('carte.jpg'),
+                ],
             ],
-        ]);
-        $assurance = $moto->fresh()->documentsParType()['assurance'];
+        ])->assertRedirect(route('manager.motos.show', $moto))
+            ->assertSessionHas('success');
+
+        $papiers = $moto->fresh()->documentsParType();
+        $assurance = $papiers['assurance'];
+        Storage::disk(Moto::DISQUE)->assertExists($assurance->chemin);
+        $this->assertStringContainsString('/documents/', $assurance->chemin);
+        Storage::disk(Moto::DISQUE)->assertExists($papiers['carte_grise']->chemin);
+        $this->assertSame('AB-1234', $papiers['carte_grise']->numero);
+        $this->assertSame('2026-03-01', $papiers['vignette']->date_debut->toDateString());
 
         $this->asManager()->get(route('manager.motos.show', $moto))
             ->assertOk()
-            ->assertSee(route('manager.documents.fichier', $assurance), false);
+            ->assertSee(route('manager.documents.fichier', $assurance), false)
+            ->assertSee('01-01-26')
+            ->assertSee('AB-1234');
 
         $this->asManager()->from(route('manager.motos.show', $moto))
             ->post(route('manager.motos.photos', $moto))
