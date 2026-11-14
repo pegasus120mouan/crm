@@ -64,6 +64,7 @@
             <th>Châssis</th>
             <th class="text-end">Prix d'acquisition</th>
             <th>Statut</th>
+            <th>Documents</th>
             <th>Livreur / propriétaire</th>
             <th>Actions</th>
           </tr>
@@ -93,6 +94,28 @@
               <td><small>{{ $moto->numero_chassis ?: '—' }}</small></td>
               <td class="text-end">{{ number_format((int) $moto->prix_achat, 0, ',', ' ') }} FCFA</td>
               <td><span class="badge bg-label-{{ $moto->couleurStatut() }}">{{ $moto->libelleStatut() }}</span></td>
+              <td>
+                @php($documentsMoto = $moto->documentsParType())
+                @if ($documentsMoto === [])
+                  <span class="text-muted">—</span>
+                @else
+                  @foreach (\App\Models\LocationVente\MotoDocument::TYPES as $type => $libelle)
+                    @php($document = $documentsMoto[$type] ?? null)
+                    @if ($document)
+                      <div class="mb-1">
+                        <span class="badge bg-label-{{ $document->couleurValidite() }}">
+                          {{ $libelle }}
+                          @if ($document->date_fin)
+                            · {{ $document->date_fin->format('d/m/Y') }}
+                          @elseif ($document->numero)
+                            · {{ $document->numero }}
+                          @endif
+                        </span>
+                      </div>
+                    @endif
+                  @endforeach
+                @endif
+              </td>
               <td>
                 @if ($contrat)
                   {{ $contrat->livreur?->nomComplet() }}
@@ -129,7 +152,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="7" class="text-center py-4">Aucune moto enregistrée</td>
+              <td colspan="8" class="text-center py-4">Aucune moto enregistrée</td>
             </tr>
           @endforelse
         </tbody>
@@ -142,7 +165,7 @@
   </div>
 
   <div class="modal fade" id="modalAjouterMoto" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
         <form action="{{ route('manager.motos.store') }}" method="POST" enctype="multipart/form-data">
           @csrf
@@ -164,7 +187,7 @@
 
   @foreach ($motos as $moto)
     <div class="modal fade" id="modalModifierMoto{{ $moto->id }}" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
           <form action="{{ route('manager.motos.update', $moto) }}" method="POST" enctype="multipart/form-data">
             @csrf

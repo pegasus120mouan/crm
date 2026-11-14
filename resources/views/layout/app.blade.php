@@ -74,6 +74,12 @@
                 <div class="text-truncate">Liste des motos</div>
               </a>
             </li>
+            <li class="menu-item {{ request()->routeIs('manager.documents.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.documents.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-folder"></i>
+                <div class="text-truncate">Documents</div>
+              </a>
+            </li>
             <li class="menu-item {{ request()->routeIs('manager.contrats.*') ? 'active' : '' }}">
               <a href="{{ route('manager.contrats.index') }}" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-file"></i>

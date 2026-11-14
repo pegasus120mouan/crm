@@ -20,7 +20,7 @@ class MotoController extends Controller
         $statut = (string) $request->query('statut', '');
 
         $motos = Moto::query()
-            ->with(['contratActuel.livreur', 'photos'])
+            ->with(['contratActuel.livreur', 'photos', 'documents'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($query) use ($search) {
                     $query->where('immatriculation', 'like', "%{$search}%")
@@ -77,6 +77,39 @@ class MotoController extends Controller
         });
 
         return redirect()->route('manager.motos.index')->with('success', 'Moto modifiée avec succès');
+    }
+
+    public function show(Moto $moto)
+    {
+        $moto->load(['photos', 'documents']);
+
+        return view('manager.motos.show', compact('moto'));
+    }
+
+    public function enregistrerPhotos(Request $request, Moto $moto)
+    {
+        $regles = ['photos' => ['nullable', 'array']];
+        $messages = [];
+
+        foreach (MotoPhoto::FACES as $face => $libelle) {
+            $regles["photos.{$face}"] = ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
+            $messages["photos.{$face}.image"] = "La photo « {$libelle} » doit être une image (JPG, PNG ou WEBP).";
+            $messages["photos.{$face}.mimes"] = "La photo « {$libelle} » doit être une image (JPG, PNG ou WEBP).";
+            $messages["photos.{$face}.max"] = "La photo « {$libelle} » ne doit pas dépasser 5 Mo.";
+        }
+
+        $request->validate($regles, $messages);
+
+        $photos = $this->photosRecues($request);
+        if ($photos === []) {
+            return back()->with('error', 'Choisissez au moins une image à remplacer.');
+        }
+
+        $moto->enregistrerPhotos($photos);
+
+        return redirect()
+            ->route('manager.motos.show', $moto)
+            ->with('success', 'Images de la moto modifiées.');
     }
 
     public function photo(Moto $moto, string $face)

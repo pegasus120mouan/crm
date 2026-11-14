@@ -44,8 +44,16 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::get('/motos/{moto}/photos/{face}', [Manager\MotoController::class, 'photo'])
         ->whereIn('face', array_keys(\App\Models\LocationVente\MotoPhoto::FACES))
         ->name('motos.photo');
+    Route::get('/motos/{moto}', [Manager\MotoController::class, 'show'])->name('motos.show');
+    Route::post('/motos/{moto}/photos', [Manager\MotoController::class, 'enregistrerPhotos'])->name('motos.photos');
     Route::put('/motos/{moto}', [Manager\MotoController::class, 'update'])->name('motos.update');
     Route::delete('/motos/{moto}', [Manager\MotoController::class, 'destroy'])->name('motos.destroy');
+
+    Route::get('/documents', [Manager\MotoDocumentController::class, 'index'])->name('documents.index');
+    Route::post('/documents', [Manager\MotoDocumentController::class, 'store'])->name('documents.store');
+    Route::get('/documents/{document}/fichier', [Manager\MotoDocumentController::class, 'fichier'])->name('documents.fichier');
+    Route::put('/documents/{document}', [Manager\MotoDocumentController::class, 'update'])->name('documents.update');
+    Route::delete('/documents/{document}', [Manager\MotoDocumentController::class, 'destroy'])->name('documents.destroy');
 
     Route::get('/contrats', [Manager\ContratController::class, 'index'])->name('contrats.index');
     Route::post('/contrats', [Manager\ContratController::class, 'store'])->name('contrats.store');
