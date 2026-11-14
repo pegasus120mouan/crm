@@ -349,6 +349,28 @@ class LocationVenteTest extends TestCase
         $this->assertSame(100000, $contrat->reste());
     }
 
+    public function test_a_contract_can_be_deleted_with_its_payments(): void
+    {
+        $contrat = $this->contrat();
+        $this->asManager()->post('/manager/paiements', $this->paiement($contrat, 10000));
+
+        $this->asManager()->get(route('manager.contrats.index'))
+            ->assertOk()
+            ->assertSee(route('manager.contrats.destroy', $contrat), false);
+
+        $this->asManager()->get(route('manager.contrats.show', $contrat))
+            ->assertOk()
+            ->assertSee('Supprimer');
+
+        $this->asManager()->delete(route('manager.contrats.destroy', $contrat))
+            ->assertRedirect(route('manager.contrats.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(0, Contrat::count());
+        $this->assertSame(0, Paiement::count());
+        $this->assertSame(Moto::STATUT_DISPONIBLE, $contrat->moto->fresh()->statut);
+    }
+
     public function test_terminating_a_contract_returns_the_moto_to_the_fleet(): void
     {
         $contrat = $this->contrat();

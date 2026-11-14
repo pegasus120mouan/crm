@@ -282,6 +282,28 @@ class ContratController extends Controller
         return redirect()->route('manager.contrats.show', $contrat)->with('success', 'Contrat résilié : la moto revient dans le parc (disponible).');
     }
 
+    public function destroy(Contrat $contrat)
+    {
+        $reference = $contrat->reference;
+        $moto = $contrat->moto;
+
+        DB::transaction(function () use ($contrat, $moto) {
+            $contrat->delete();
+
+            $autreContratActif = $moto->contrats()
+                ->whereIn('statut', [Contrat::STATUT_EN_COURS, Contrat::STATUT_SOLDE])
+                ->exists();
+
+            if (! $autreContratActif && in_array($moto->statut, [Moto::STATUT_EN_LOCATION, Moto::STATUT_CEDEE], true)) {
+                $moto->update(['statut' => Moto::STATUT_DISPONIBLE]);
+            }
+        });
+
+        return redirect()
+            ->route('manager.contrats.index')
+            ->with('success', "Contrat {$reference} supprimé. Les paiements associés sont retirés.");
+    }
+
     private function utilisateurConnecteId(): ?int
     {
         $id = (int) data_get(session('utilisateur'), 'id', 0);

@@ -62,6 +62,7 @@
             <th class="text-end">Reste</th>
             <th>Prochaine échéance</th>
             <th>Statut</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -95,10 +96,24 @@
               </td>
               <td>{{ optional($contrat->prochaineEcheance())->format('d/m/Y') ?? '—' }}</td>
               <td><span class="badge bg-label-{{ $contrat->couleurStatut() }}">{{ $contrat->retard() > 0 ? 'En retard' : $contrat->libelleStatut() }}</span></td>
+              <td>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-icon btn-outline-danger"
+                  title="Supprimer ce contrat"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalConfirmation"
+                  data-confirm-titre="Supprimer le contrat {{ $contrat->reference }}"
+                  data-confirm-texte="Le contrat {{ $contrat->reference }} et ses paiements seront définitivement supprimés. La moto redevient disponible si elle n'est liée à aucun autre contrat en cours ou soldé."
+                  data-confirm-url="{{ route('manager.contrats.destroy', $contrat) }}"
+                  data-confirm-method="DELETE">
+                  <i class="icon-base bx bx-trash"></i>
+                </button>
+              </td>
             </tr>
           @empty
             <tr>
-              <td colspan="9" class="text-center py-4">Aucun contrat pour le moment</td>
+              <td colspan="10" class="text-center py-4">Aucun contrat pour le moment</td>
             </tr>
           @endforelse
         </tbody>
@@ -111,4 +126,5 @@
   </div>
 
   @include('manager.contrats._modal_nouveau')
+  @include('manager._confirmation')
 @endsection

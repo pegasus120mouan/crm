@@ -35,6 +35,17 @@
           <i class="icon-base bx bx-block me-1"></i> Résilier
         </button>
       @endif
+      <button
+        type="button"
+        class="btn btn-danger"
+        data-bs-toggle="modal"
+        data-bs-target="#modalConfirmation"
+        data-confirm-url="{{ route('manager.contrats.destroy', $contrat) }}"
+        data-confirm-method="DELETE"
+        data-confirm-titre="Supprimer le contrat {{ $contrat->reference }}"
+        data-confirm-texte="Le contrat et ses paiements seront définitivement supprimés. La moto redevient disponible si elle n'est liée à aucun autre contrat en cours ou soldé.">
+        <i class="icon-base bx bx-trash me-1"></i> Supprimer
+      </button>
     </div>
   </div>
 
