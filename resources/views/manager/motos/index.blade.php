@@ -27,7 +27,7 @@
       ['Cédées (hors parc)', $stats['cedees'], 'bx-key', 'secondary', 'cedee'],
     ] as [$libelle, $valeur, $icone, $couleur, $filtre])
       <div class="col-sm-6 col-xl mb-4">
-        <a href="{{ route('manager.motos.index', ['statut' => $filtre]) }}" class="card h-100 {{ $statut === $filtre ? 'border border-primary' : '' }}">
+        <a href="{{ route('manager.motos.index', array_merge(request()->except('page'), ['statut' => $filtre])) }}" class="card h-100 {{ $statut === $filtre ? 'border border-primary' : '' }}">
           <div class="card-body d-flex justify-content-between align-items-center">
             <div>
               <span class="d-block mb-1 text-body">{{ $libelle }}</span>
@@ -40,20 +40,93 @@
     @endforeach
   </div>
 
-  <div class="card">
-    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-      <h5 class="mb-0">Motos</h5>
-      <form method="GET" action="{{ route('manager.motos.index') }}" class="d-flex flex-wrap gap-2">
-        <input type="text" name="q" class="form-control" placeholder="Immatriculation, marque, châssis..." value="{{ request('q') }}">
-        <select name="statut" class="form-select" style="width: auto;">
-          <option value="">Tous les statuts</option>
-          <option value="parc" @selected($statut === 'parc')>Dans le parc</option>
-          @foreach (\App\Models\LocationVente\Moto::STATUTS as $valeur => $libelle)
-            <option value="{{ $valeur }}" @selected($statut === $valeur)>{{ $libelle }}</option>
-          @endforeach
-        </select>
-        <button type="submit" class="btn btn-outline-primary">Rechercher</button>
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="avatar-initial rounded bg-label-primary p-2"><i class="icon-base bx bx-filter-alt"></i></span>
+        <div>
+          <h5 class="mb-0">Recherche</h5>
+          <small class="text-muted">Identité de la moto, statut, livreur ou période d'acquisition</small>
+        </div>
+      </div>
+      <form method="GET" action="{{ route('manager.motos.index') }}">
+        <div class="row g-3">
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="filtreModele">Modèle</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-purchase-tag"></i></span>
+              <input type="text" name="modele" id="filtreModele" class="form-control" value="{{ $filtres['modele'] ?? '' }}" placeholder="Nom du modèle">
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="filtreImmatriculation">Immatriculation</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-id-card"></i></span>
+              <input type="text" name="immatriculation" id="filtreImmatriculation" class="form-control" value="{{ $filtres['immatriculation'] ?? '' }}" placeholder="Numéro de plaque">
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="filtreChassis">N° de châssis</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-barcode"></i></span>
+              <input type="text" name="chassis" id="filtreChassis" class="form-control" value="{{ $filtres['chassis'] ?? '' }}" placeholder="Numéro de châssis">
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="filtreStatut">Statut</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-check-circle"></i></span>
+              <select name="statut" id="filtreStatut" class="form-select">
+                <option value="">Tous les statuts</option>
+                <option value="parc" @selected(($filtres['statut'] ?? '') === 'parc')>Dans le parc</option>
+                @foreach (\App\Models\LocationVente\Moto::STATUTS as $valeur => $libelle)
+                  <option value="{{ $valeur }}" @selected(($filtres['statut'] ?? '') === $valeur)>{{ $libelle }}</option>
+                @endforeach
+              </select>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-4">
+            <label class="form-label" for="filtreLivreur">Livreur / propriétaire</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-user"></i></span>
+              <select name="livreur_id" id="filtreLivreur" class="form-select">
+                <option value="">Tous</option>
+                @foreach ($livreursRecherche as $livreur)
+                  <option value="{{ $livreur->id }}" @selected((string) ($filtres['livreur_id'] ?? '') === (string) $livreur->id)>{{ $livreur->nomComplet() }}</option>
+                @endforeach
+              </select>
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-4">
+            <label class="form-label" for="filtreAcquisitionDu">Acquisition du</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-calendar"></i></span>
+              <input type="date" name="acquisition_du" id="filtreAcquisitionDu" class="form-control" value="{{ $filtres['acquisition_du'] ?? '' }}">
+            </div>
+          </div>
+          <div class="col-md-6 col-xl-4">
+            <label class="form-label" for="filtreAcquisitionAu">Acquisition au</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bx bx-calendar-check"></i></span>
+              <input type="date" name="acquisition_au" id="filtreAcquisitionAu" class="form-control" value="{{ $filtres['acquisition_au'] ?? '' }}">
+            </div>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-3 pt-3 border-top">
+          <a href="{{ route('manager.motos.index') }}" class="btn btn-outline-secondary">
+            <i class="bx bx-reset me-1"></i> Réinitialiser
+          </a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bx bx-search me-1"></i> Rechercher
+          </button>
+        </div>
       </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-0">Motos</h5>
     </div>
     <div class="table-responsive">
       <table class="table table-hover mb-0">
@@ -152,7 +225,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="8" class="text-center py-4">Aucune moto enregistrée</td>
+              <td colspan="8" class="text-center py-4">Aucune moto ne correspond à cette recherche</td>
             </tr>
           @endforelse
         </tbody>

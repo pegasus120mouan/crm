@@ -149,6 +149,7 @@ class MotoDocumentTest extends TestCase
             ->assertSee('Modifier les images de la moto')
             ->assertSee('Enregistrer les documents')
             ->assertSee('Date début')
+            ->assertSee('dd/mm/yyyy')
             ->assertSee('Assurance')
             ->assertSee('Vignette')
             ->assertSee('Carte grise');

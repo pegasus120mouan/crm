@@ -96,7 +96,7 @@
         </div>
         <div class="card-body">
           <div class="row g-3">
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-sm-6 col-lg-4">
               <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #f3e8ff;">
                 <span class="badge bg-info rounded-pill me-3"><i class="bx bx-purchase-tag"></i></span>
                 <div>
@@ -106,7 +106,27 @@
                 </div>
               </a>
             </div>
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-sm-6 col-lg-4">
+              <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #fff4e5;">
+                <span class="badge bg-warning rounded-pill me-3"><i class="bx bx-receipt"></i></span>
+                <div>
+                  <small class="d-block">Montant total à payer</small>
+                  <strong>{{ $fcfa($locationVente['a_payer']) }}</strong>
+                  <small class="d-block text-body-secondary">Total à rembourser</small>
+                </div>
+              </a>
+            </div>
+            <div class="col-sm-6 col-lg-4">
+              <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: {{ $locationVente['marges'] >= 0 ? '#e8f5e9' : '#fde8e8' }};">
+                <span class="badge bg-{{ $locationVente['marges'] >= 0 ? 'success' : 'danger' }} rounded-pill me-3"><i class="bx bx-line-chart"></i></span>
+                <div>
+                  <small class="d-block">Somme des marges</small>
+                  <strong>{{ $fcfa($locationVente['marges']) }}</strong>
+                  <small class="d-block text-body-secondary">Total à payer − coût d'acquisition</small>
+                </div>
+              </a>
+            </div>
+            <div class="col-sm-6 col-lg-4">
               <a href="{{ route('manager.paiements.index', ['du' => now()->startOfMonth()->toDateString(), 'au' => now()->endOfMonth()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #eef2ff;">
                 <span class="badge bg-primary rounded-pill me-3"><i class="bx bx-calendar"></i></span>
                 <div>
@@ -115,7 +135,7 @@
                 </div>
               </a>
             </div>
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-sm-6 col-lg-4">
               <a href="{{ route('manager.paiements.index', ['du' => now()->startOfYear()->toDateString(), 'au' => now()->endOfYear()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #e8f5e9;">
                 <span class="badge bg-success rounded-pill me-3"><i class="bx bx-wallet"></i></span>
                 <div>
@@ -124,7 +144,7 @@
                 </div>
               </a>
             </div>
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-sm-6 col-lg-4">
               <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: {{ $locationVente['retards'] > 0 ? '#fde8e8' : '#e8f5e9' }};">
                 <span class="badge bg-{{ $locationVente['retards'] > 0 ? 'danger' : 'success' }} rounded-pill me-3"><i class="bx bx-error"></i></span>
                 <div>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
+use App\Models\LocationVente\Contrat;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
 use App\Models\LocationVente\MotoDocument;
@@ -17,21 +18,40 @@ class MotoController extends Controller
 {
     public function index(Request $request)
     {
-        $search = trim((string) $request->query('q', ''));
-        $statut = (string) $request->query('statut', '');
+        $filtres = $request->validate([
+            'modele' => ['nullable', 'string', 'max:100'],
+            'immatriculation' => ['nullable', 'string', 'max:50'],
+            'chassis' => ['nullable', 'string', 'max:100'],
+            'statut' => ['nullable', 'string', 'max:20'],
+            'livreur_id' => ['nullable', 'integer'],
+            'acquisition_du' => ['nullable', 'date'],
+            'acquisition_au' => ['nullable', 'date'],
+        ]);
+
+        $modele = trim((string) ($filtres['modele'] ?? ''));
+        $immatriculation = trim((string) ($filtres['immatriculation'] ?? ''));
+        $chassis = trim((string) ($filtres['chassis'] ?? ''));
+        $statut = (string) ($filtres['statut'] ?? '');
+        $filtres['modele'] = $modele;
+        $filtres['immatriculation'] = $immatriculation;
+        $filtres['chassis'] = $chassis;
+        $filtres['statut'] = $statut;
 
         $motos = Moto::query()
             ->with(['contratActuel.livreur', 'photos', 'documents'])
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($query) use ($search) {
-                    $query->where('immatriculation', 'like', "%{$search}%")
-                        ->orWhere('marque', 'like', "%{$search}%")
-                        ->orWhere('modele', 'like', "%{$search}%")
-                        ->orWhere('numero_chassis', 'like', "%{$search}%");
-                });
-            })
+            ->when($modele !== '', fn ($query) => $query->where('modele', 'like', $this->contient($modele)))
+            ->when($immatriculation !== '', fn ($query) => $query->where('immatriculation', 'like', $this->contient(mb_strtoupper($immatriculation))))
+            ->when($chassis !== '', fn ($query) => $query->where('numero_chassis', 'like', $this->contient(mb_strtoupper($chassis))))
             ->when($statut === 'parc', fn ($query) => $query->dansLeParc())
             ->when(array_key_exists($statut, Moto::STATUTS), fn ($query) => $query->where('statut', $statut))
+            ->when($filtres['livreur_id'] ?? null, function ($query, $livreurId) {
+                $query->whereHas('contrats', function ($contrat) use ($livreurId) {
+                    $contrat->where('livreur_id', $livreurId)
+                        ->whereIn('statut', [Contrat::STATUT_EN_COURS, Contrat::STATUT_SOLDE]);
+                });
+            })
+            ->when($filtres['acquisition_du'] ?? null, fn ($query, $du) => $query->whereDate('date_acquisition', '>=', $du))
+            ->when($filtres['acquisition_au'] ?? null, fn ($query, $au) => $query->whereDate('date_acquisition', '<=', $au))
             ->orderBy('marque')
             ->orderBy('immatriculation')
             ->paginate(20)
@@ -49,8 +69,18 @@ class MotoController extends Controller
 
         $livreursDisponibles = Livreur::query()->peuventRecevoirUneMoto()->get();
         $motosDisponibles = Moto::query()->disponibles()->get();
+        $livreursRecherche = Livreur::query()
+            ->whereHas('contrats', fn ($contrat) => $contrat->whereIn('statut', [Contrat::STATUT_EN_COURS, Contrat::STATUT_SOLDE]))
+            ->orderBy('nom')
+            ->orderBy('prenoms')
+            ->get();
 
-        return view('manager.motos.index', compact('motos', 'stats', 'statut', 'livreursDisponibles', 'motosDisponibles'));
+        return view('manager.motos.index', compact('motos', 'stats', 'statut', 'filtres', 'livreursDisponibles', 'motosDisponibles', 'livreursRecherche'));
+    }
+
+    private function contient(string $valeur): string
+    {
+        return '%'.addcslashes($valeur, '%_\\').'%';
     }
 
     public function store(Request $request)

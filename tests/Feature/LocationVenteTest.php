@@ -191,6 +191,99 @@ class LocationVenteTest extends TestCase
             ->assertDontSee('id="modalNouveauContrat"', false);
     }
 
+    public function test_moto_search_filters_by_model_plate_chassis_status_rider_and_acquisition_date(): void
+    {
+        $livreur = Livreur::create(['nom' => 'Kone', 'prenoms' => 'Ibrahim', 'contact' => '0701', 'statut' => true]);
+        $proprietaire = Livreur::create(['nom' => 'Bamba', 'prenoms' => 'Awa', 'contact' => '0102', 'statut' => true]);
+
+        $enLocation = Moto::create([
+            'marque' => 'Haojue',
+            'modele' => 'HJ125',
+            'immatriculation' => 'AB 1234 CI',
+            'numero_chassis' => 'CHAS-HAO',
+            'statut' => Moto::STATUT_EN_LOCATION,
+            'date_acquisition' => '2026-03-01',
+        ]);
+        Moto::create([
+            'marque' => 'TVS',
+            'modele' => 'HLX',
+            'immatriculation' => 'CD 5678 CI',
+            'numero_chassis' => 'CHAS-TVS',
+            'statut' => Moto::STATUT_DISPONIBLE,
+            'date_acquisition' => '2026-08-15',
+        ]);
+        $cedee = Moto::create([
+            'marque' => 'Sanili',
+            'modele' => 'SN150',
+            'immatriculation' => 'EF 9012 CI',
+            'numero_chassis' => 'CHAS-SAN',
+            'statut' => Moto::STATUT_CEDEE,
+            'date_acquisition' => '2025-11-01',
+        ]);
+
+        Contrat::create([
+            'livreur_id' => $livreur->id,
+            'moto_id' => $enLocation->id,
+            'prix_total' => 100000,
+            'apport' => 0,
+            'montant_echeance' => 10000,
+            'frequence' => 'hebdomadaire',
+            'date_debut' => '2026-03-10',
+            'statut' => Contrat::STATUT_EN_COURS,
+        ]);
+        Contrat::create([
+            'livreur_id' => $proprietaire->id,
+            'moto_id' => $cedee->id,
+            'prix_total' => 100000,
+            'apport' => 0,
+            'montant_echeance' => 10000,
+            'frequence' => 'hebdomadaire',
+            'date_debut' => '2025-11-15',
+            'statut' => Contrat::STATUT_SOLDE,
+            'date_solde' => '2026-06-01',
+        ]);
+
+        $this->asManager()->get('/manager/motos?modele=HJ125')
+            ->assertOk()
+            ->assertSee('CHAS-HAO')
+            ->assertDontSee('CHAS-TVS')
+            ->assertDontSee('CHAS-SAN')
+            ->assertSee('1 moto(s)');
+
+        $this->asManager()->get('/manager/motos?immatriculation=cd 5678')
+            ->assertOk()
+            ->assertSee('CHAS-TVS')
+            ->assertDontSee('CHAS-HAO')
+            ->assertDontSee('CHAS-SAN');
+
+        $this->asManager()->get('/manager/motos?chassis=chas-hao')
+            ->assertOk()
+            ->assertSee('CHAS-HAO')
+            ->assertDontSee('CHAS-TVS');
+
+        $this->asManager()->get('/manager/motos?statut=disponible')
+            ->assertOk()
+            ->assertSee('CHAS-TVS')
+            ->assertDontSee('CHAS-HAO');
+
+        $this->asManager()->get('/manager/motos?livreur_id='.$livreur->id)
+            ->assertOk()
+            ->assertSee('CHAS-HAO')
+            ->assertDontSee('CHAS-TVS')
+            ->assertDontSee('CHAS-SAN');
+
+        $this->asManager()->get('/manager/motos?livreur_id='.$proprietaire->id)
+            ->assertOk()
+            ->assertSee('CHAS-SAN')
+            ->assertDontSee('CHAS-HAO');
+
+        $this->asManager()->get('/manager/motos?acquisition_du=2026-07-01&acquisition_au=2026-12-31')
+            ->assertOk()
+            ->assertSee('CHAS-TVS')
+            ->assertDontSee('CHAS-HAO')
+            ->assertDontSee('CHAS-SAN');
+    }
+
     public function test_new_moto_can_be_added_while_registration_is_pending(): void
     {
         $this->asManager()->from('/manager/motos')->post('/manager/motos', [

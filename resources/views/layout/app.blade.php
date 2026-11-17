@@ -203,6 +203,148 @@
     <script src="{{ asset('assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js') }}"></script>
     <script src="{{ asset('assets/vendor/js/menu.js') }}"></script>
     <script src="{{ asset('assets/js/main.js') }}"></script>
+    <script>
+      document.querySelectorAll('input[type="date"]').forEach(function (champ) {
+        if (champ.dataset.dateFr) {
+          return;
+        }
+        champ.dataset.dateFr = '1';
+
+        var isoInitial = champ.value;
+        var minimum = champ.getAttribute('min') || '';
+        var maximum = champ.getAttribute('max') || '';
+        var affichage = document.createElement('input');
+        affichage.type = 'text';
+        affichage.className = champ.className;
+        affichage.placeholder = 'dd/mm/yyyy';
+        affichage.inputMode = 'numeric';
+        affichage.autocomplete = 'off';
+        affichage.maxLength = 10;
+        affichage.setAttribute('aria-label', champ.getAttribute('aria-label') || '');
+        if (champ.required) {
+          affichage.required = true;
+          champ.required = false;
+        }
+        if (champ.readOnly) {
+          affichage.readOnly = true;
+        }
+        if (champ.disabled) {
+          affichage.disabled = true;
+        }
+        if (champ.id) {
+          affichage.id = champ.id + '-fr';
+          var label = document.querySelector('label[for="' + champ.id + '"]');
+          if (label) {
+            label.htmlFor = affichage.id;
+          }
+        }
+
+        var proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+
+        function versAffichage(iso) {
+          var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+          affichage.value = match ? match[3] + '/' + match[2] + '/' + match[1] : '';
+        }
+
+        function versIso(texte) {
+          var match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((texte || '').trim());
+          if (!match) {
+            return '';
+          }
+          var jour = Number(match[1]);
+          var mois = Number(match[2]);
+          var annee = Number(match[3]);
+          var date = new Date(annee, mois - 1, jour);
+          if (date.getFullYear() !== annee || date.getMonth() !== mois - 1 || date.getDate() !== jour) {
+            return '';
+          }
+          return annee + '-' + String(mois).padStart(2, '0') + '-' + String(jour).padStart(2, '0');
+        }
+
+        champ.type = 'hidden';
+        proto.set.call(champ, isoInitial);
+        versAffichage(isoInitial);
+        champ.before(affichage);
+
+        Object.defineProperty(champ, 'value', {
+          configurable: true,
+          get: function () {
+            return proto.get.call(champ);
+          },
+          set: function (valeur) {
+            proto.set.call(champ, valeur);
+            versAffichage(valeur);
+          },
+        });
+
+        function publier(iso) {
+          var precedent = proto.get.call(champ);
+          proto.set.call(champ, iso);
+          if (iso === precedent) {
+            return;
+          }
+          champ.dispatchEvent(new Event('input', { bubbles: true }));
+          champ.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function synchroniser() {
+          if (affichage.value.trim() === '') {
+            affichage.setCustomValidity('');
+            publier('');
+            return;
+          }
+          var iso = versIso(affichage.value);
+          if (!iso) {
+            affichage.setCustomValidity('Utilisez le format dd/mm/yyyy.');
+            publier('');
+            return;
+          }
+          if ((minimum && iso < minimum) || (maximum && iso > maximum)) {
+            affichage.setCustomValidity('Cette date est hors de la période autorisée.');
+            publier('');
+            return;
+          }
+          affichage.setCustomValidity('');
+          publier(iso);
+        }
+
+        affichage.addEventListener('paste', function (event) {
+          var pressePapiers = event.clipboardData || window.clipboardData;
+          var iso = /^(\d{4})-(\d{2})-(\d{2})/.exec((pressePapiers.getData('text') || '').trim());
+          if (!iso) {
+            return;
+          }
+          event.preventDefault();
+          affichage.value = iso[3] + '/' + iso[2] + '/' + iso[1];
+          synchroniser();
+        });
+        affichage.addEventListener('input', function () {
+          var chiffres = affichage.value.replace(/\D/g, '').slice(0, 8);
+          var texte = chiffres;
+          if (chiffres.length > 4) {
+            texte = chiffres.slice(0, 2) + '/' + chiffres.slice(2, 4) + '/' + chiffres.slice(4);
+          } else if (chiffres.length > 2) {
+            texte = chiffres.slice(0, 2) + '/' + chiffres.slice(2);
+          }
+          affichage.value = texte;
+          if (texte.length === 10 || texte === '') {
+            synchroniser();
+          } else {
+            affichage.setCustomValidity('');
+          }
+        });
+        affichage.addEventListener('blur', synchroniser);
+        if (champ.form) {
+          champ.form.addEventListener('submit', function (event) {
+            synchroniser();
+            if (!affichage.checkValidity()) {
+              event.preventDefault();
+              affichage.reportValidity();
+            }
+          });
+        }
+      });
+    </script>
     @stack('scripts')
   </body>
 </html>
