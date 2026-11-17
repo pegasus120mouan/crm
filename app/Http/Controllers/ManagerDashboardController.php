@@ -148,11 +148,12 @@ class ManagerDashboardController extends Controller
     /**
      * Encaissements et retards des contrats de location-vente.
      *
-     * @return array{paye_mois: int, paye_annee: int, retards: int, montant_retard: int}
+     * @return array{investi: int, paye_mois: int, paye_annee: int, retards: int, montant_retard: int}
      */
     private function statsLocationVente(): array
     {
         $vide = [
+            'investi' => 0,
             'paye_mois' => 0,
             'paye_annee' => 0,
             'retards' => 0,
@@ -185,7 +186,12 @@ class ManagerDashboardController extends Controller
             ->get()
             ->filter(fn (Contrat $contrat) => $contrat->retard() > 0);
 
+        $investi = Schema::hasColumn('location_vente_contrats', 'prix_achat')
+            ? (int) Contrat::query()->where('statut', '!=', Contrat::STATUT_RESILIE)->sum('prix_achat')
+            : 0;
+
         return [
+            'investi' => $investi,
             'paye_mois' => $payeMois,
             'paye_annee' => $payeAnnee,
             'retards' => $enRetard->count(),

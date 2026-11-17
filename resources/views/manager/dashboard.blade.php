@@ -96,8 +96,18 @@
         </div>
         <div class="card-body">
           <div class="row g-3">
-            <div class="col-md-4">
-              <a href="{{ route('manager.paiements.index', ['du' => now()->startOfMonth()->toDateString(), 'au' => now()->endOfMonth()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body" style="background: #eef2ff;">
+            <div class="col-sm-6 col-xl-3">
+              <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #f3e8ff;">
+                <span class="badge bg-info rounded-pill me-3"><i class="bx bx-purchase-tag"></i></span>
+                <div>
+                  <small class="d-block">Total investi</small>
+                  <strong>{{ $fcfa($locationVente['investi']) }}</strong>
+                  <small class="d-block text-body-secondary">Somme des coûts d'acquisition</small>
+                </div>
+              </a>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+              <a href="{{ route('manager.paiements.index', ['du' => now()->startOfMonth()->toDateString(), 'au' => now()->endOfMonth()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #eef2ff;">
                 <span class="badge bg-primary rounded-pill me-3"><i class="bx bx-calendar"></i></span>
                 <div>
                   <small class="d-block">Payé ce mois</small>
@@ -105,8 +115,8 @@
                 </div>
               </a>
             </div>
-            <div class="col-md-4">
-              <a href="{{ route('manager.paiements.index', ['du' => now()->startOfYear()->toDateString(), 'au' => now()->endOfYear()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body" style="background: #e8f5e9;">
+            <div class="col-sm-6 col-xl-3">
+              <a href="{{ route('manager.paiements.index', ['du' => now()->startOfYear()->toDateString(), 'au' => now()->endOfYear()->toDateString()]) }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: #e8f5e9;">
                 <span class="badge bg-success rounded-pill me-3"><i class="bx bx-wallet"></i></span>
                 <div>
                   <small class="d-block">Payé cette année</small>
@@ -114,8 +124,8 @@
                 </div>
               </a>
             </div>
-            <div class="col-md-4">
-              <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body" style="background: {{ $locationVente['retards'] > 0 ? '#fde8e8' : '#e8f5e9' }};">
+            <div class="col-sm-6 col-xl-3">
+              <a href="{{ route('manager.contrats.index') }}" class="d-flex align-items-center p-3 rounded text-body h-100" style="background: {{ $locationVente['retards'] > 0 ? '#fde8e8' : '#e8f5e9' }};">
                 <span class="badge bg-{{ $locationVente['retards'] > 0 ? 'danger' : 'success' }} rounded-pill me-3"><i class="bx bx-error"></i></span>
                 <div>
                   <small class="d-block">Retards de paiement</small>

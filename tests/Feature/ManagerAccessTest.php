@@ -117,6 +117,7 @@ class ManagerAccessTest extends TestCase
             'date_debut' => '2026-09-01',
             'montant_echeance' => 10000,
             'prix_total' => 200000,
+            'prix_achat' => 380000,
         ]);
         $this->paiementLocationVente($enRetard, 20000, '2026-10-15');
         $this->paiementLocationVente($enRetard, 15000, '2026-11-02');
@@ -125,12 +126,28 @@ class ManagerAccessTest extends TestCase
             'date_debut' => '2026-10-01',
             'montant_echeance' => 5000,
             'prix_total' => 100000,
+            'prix_achat' => 120000,
         ]);
 
         $aJour = $this->contratLocationVente([
             'date_debut' => '2026-11-03',
             'montant_echeance' => 10000,
             'prix_total' => 200000,
+            'prix_achat' => 50000,
+        ]);
+        $this->contratLocationVente([
+            'date_debut' => '2026-01-01',
+            'montant_echeance' => 10000,
+            'prix_total' => 10000,
+            'prix_achat' => 10000,
+            'statut' => Contrat::STATUT_SOLDE,
+        ]);
+        $this->contratLocationVente([
+            'date_debut' => '2026-02-01',
+            'montant_echeance' => 10000,
+            'prix_total' => 10000,
+            'prix_achat' => 900000,
+            'statut' => Contrat::STATUT_RESILIE,
         ]);
         $this->paiementLocationVente($aJour, 25000, '2026-11-03');
         $this->paiementLocationVente($aJour, 40000, '2025-12-20');
@@ -144,6 +161,8 @@ class ManagerAccessTest extends TestCase
             ->assertOk()
             ->assertSeeTextInOrder([
                 'Location-vente',
+                'Total investi',
+                '560 000 FCFA',
                 'Payé ce mois',
                 '40 000 FCFA',
                 'Payé cette année',
