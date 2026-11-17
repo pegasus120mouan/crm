@@ -288,19 +288,49 @@ class LocationVenteTest extends TestCase
         ])->assertSessionHasErrors('mode_apport');
     }
 
-    public function test_a_livreur_cannot_have_two_contracts_and_a_rented_moto_cannot_be_reused(): void
+    public function test_a_livreur_can_have_two_contracts_but_not_three_and_a_rented_moto_cannot_be_reused(): void
     {
         $contrat = $this->contrat();
         $autreMoto = Moto::create(['marque' => 'TVS', 'immatriculation' => 'CD 5678 CI', 'statut' => 'disponible']);
+        $troisiemeMoto = Moto::create(['marque' => 'Sanili', 'immatriculation' => 'EF 9012 CI', 'statut' => 'disponible']);
         $autreLivreur = Livreur::create(['nom' => 'Yao', 'prenoms' => 'Paul', 'contact' => '0505', 'statut' => true]);
 
-        $this->asManager()->from('/manager/contrats')->post('/manager/contrats', $this->conditions($contrat->livreur_id, $autreMoto->id))
+        $livreur = $contrat->livreur;
+        $optionLivreur = $livreur->code.' · '.$livreur->nomComplet();
+
+        $this->asManager()->get(route('manager.livreurs.show', $livreur))
+            ->assertOk()
+            ->assertSee('Attribuer une moto');
+        $this->asManager()->get('/manager/contrats')
+            ->assertOk()
+            ->assertSee($optionLivreur, false);
+
+        $this->asManager()->post('/manager/contrats', $this->conditions($contrat->livreur_id, $autreMoto->id))
+            ->assertRedirect();
+
+        $second = Contrat::query()->whereKeyNot($contrat->id)->first();
+        $this->assertNotNull($second);
+        $this->assertSame($contrat->livreur_id, $second->livreur_id);
+
+        $this->asManager()->get('/manager/livreurs')
+            ->assertOk()
+            ->assertSee($contrat->reference)
+            ->assertSee($second->reference);
+
+        $this->asManager()->get(route('manager.livreurs.show', $livreur))
+            ->assertOk()
+            ->assertDontSee('Attribuer une moto');
+        $this->asManager()->get('/manager/contrats')
+            ->assertOk()
+            ->assertDontSee($optionLivreur, false);
+
+        $this->asManager()->from('/manager/contrats')->post('/manager/contrats', $this->conditions($contrat->livreur_id, $troisiemeMoto->id))
             ->assertSessionHasErrors('livreur_id');
 
         $this->asManager()->from('/manager/contrats')->post('/manager/contrats', $this->conditions($autreLivreur->id, $contrat->moto_id))
             ->assertSessionHasErrors('moto_id');
 
-        $this->assertSame(1, Contrat::count());
+        $this->assertSame(2, Contrat::count());
     }
 
     public function test_payment_reduces_the_balance_and_overpayment_is_refused(): void

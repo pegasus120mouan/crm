@@ -94,8 +94,8 @@ class ContratController extends Controller
                 throw ValidationException::withMessages(['livreur_id' => 'Ce livreur est inactif : acceptez son KYC avant de lui attribuer une moto.']);
             }
 
-            if ($livreur->contratEnCours()->exists()) {
-                throw ValidationException::withMessages(['livreur_id' => 'Ce livreur a déjà un contrat de location-vente en cours.']);
+            if ($livreur->contratsEnCours()->count() >= Livreur::NOMBRE_MAX_CONTRATS_EN_COURS) {
+                throw ValidationException::withMessages(['livreur_id' => 'Ce livreur a déjà deux contrats de location-vente en cours.']);
             }
 
             if ($moto->statut !== Moto::STATUT_DISPONIBLE) {

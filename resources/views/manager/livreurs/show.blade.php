@@ -20,11 +20,7 @@
         <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalNouveauContrat" data-livreur-id="{{ $livreur->id }}">
           <i class="icon-base bx bx-cycling me-1"></i> Attribuer une moto
         </button>
-      @elseif ($livreur->contratEnCours)
-        <a href="{{ route('manager.contrats.show', $livreur->contratEnCours) }}" class="btn btn-outline-primary">
-          <i class="icon-base bx bx-file me-1"></i> Contrat en cours
-        </a>
-      @else
+      @elseif (! $livreur->statut)
         <span title="Acceptez le KYC pour activer ce livreur et lui attribuer une moto">
           <button type="button" class="btn btn-outline-secondary" disabled>
             <i class="icon-base bx bx-cycling me-1"></i> Attribuer une moto

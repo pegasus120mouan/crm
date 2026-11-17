@@ -70,7 +70,7 @@
         </thead>
         <tbody>
           @forelse ($livreurs as $livreur)
-            @php($contrat = $livreur->contratEnCours)
+            @php($contrats = $livreur->contratsEnCours)
             <tr>
               <td>
                 <a href="{{ route('manager.livreurs.show', $livreur) }}">
@@ -83,25 +83,29 @@
               <td>{{ $livreur->prenoms }}</td>
               <td>{{ $livreur->contact }}</td>
               <td>
-                @if ($contrat)
-                  <a href="{{ route('manager.contrats.show', $contrat) }}" class="fw-medium">{{ $contrat->reference }}</a>
-                  <br><small class="text-muted">{{ $contrat->moto?->libelle() }}</small>
-                @else
+                @forelse ($contrats as $contrat)
+                  <div class="{{ $loop->last ? '' : 'mb-2' }}">
+                    <a href="{{ route('manager.contrats.show', $contrat) }}" class="fw-medium">{{ $contrat->reference }}</a>
+                    <br><small class="text-muted">{{ $contrat->moto?->libelle() }}</small>
+                  </div>
+                @empty
                   <span class="text-muted">Aucun</span>
                   @if ($livreur->contrats_count)
                     <br><small class="text-muted">{{ $livreur->contrats_count }} contrat(s) terminé(s)</small>
                   @endif
-                @endif
+                @endforelse
               </td>
               <td class="text-end">
-                @if ($contrat)
-                  <span class="fw-medium {{ $contrat->retard() > 0 ? 'text-danger' : '' }}">{{ number_format($contrat->reste(), 0, ',', ' ') }} FCFA</span>
-                  @if ($contrat->retard() > 0)
-                    <br><small class="text-danger">Retard {{ number_format($contrat->retard(), 0, ',', ' ') }} FCFA</small>
-                  @endif
-                @else
+                @forelse ($contrats as $contrat)
+                  <div class="{{ $loop->last ? '' : 'mb-2' }}">
+                    <span class="fw-medium {{ $contrat->retard() > 0 ? 'text-danger' : '' }}">{{ number_format($contrat->reste(), 0, ',', ' ') }} FCFA</span>
+                    @if ($contrat->retard() > 0)
+                      <br><small class="text-danger">Retard {{ number_format($contrat->retard(), 0, ',', ' ') }} FCFA</small>
+                    @endif
+                  </div>
+                @empty
                   —
-                @endif
+                @endforelse
               </td>
               <td>
                 <form action="{{ route('manager.livreurs.toggle-statut', $livreur) }}" method="POST">

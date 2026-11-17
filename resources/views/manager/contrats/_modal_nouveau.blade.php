@@ -17,7 +17,7 @@
           @if ($livreursDisponibles->isEmpty() || $motosDisponibles->isEmpty())
             <div class="alert alert-warning">
               @if ($livreursDisponibles->isEmpty())
-                Aucun livreur actif sans contrat en cours. Un livreur devient actif quand son KYC est accepté. <a href="{{ route('manager.livreurs.index') }}">Voir les livreurs</a>.<br>
+                Aucun livreur actif ne peut recevoir une moto (deux contrats en cours maximum). Un livreur devient actif quand son KYC est accepté. <a href="{{ route('manager.livreurs.index') }}">Voir les livreurs</a>.<br>
               @endif
               @if ($motosDisponibles->isEmpty())
                 Aucune moto disponible dans le parc. <a href="{{ route('manager.motos.index') }}">Ajouter une moto</a>.
@@ -35,7 +35,7 @@
                   </option>
                 @endforeach
               </select>
-              <small class="text-muted">Seuls les livreurs actifs (KYC accepté) sans contrat en cours.</small>
+              <small class="text-muted">Livreurs actifs (KYC accepté) avec moins de deux contrats en cours.</small>
             </div>
             <div class="col-md-6">
               <label class="form-label" for="contratMoto">Moto</label>

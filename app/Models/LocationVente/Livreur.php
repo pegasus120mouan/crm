@@ -6,7 +6,6 @@ use App\Models\Utilisateur;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +21,8 @@ class Livreur extends Model
     public const KYC_VALIDE = 'valide';
 
     public const KYC_REJETE = 'rejete';
+
+    public const NOMBRE_MAX_CONTRATS_EN_COURS = 2;
 
     public const KYC_STATUTS = [
         self::KYC_INCOMPLET => ['KYC incomplet', 'secondary'],
@@ -113,19 +114,28 @@ class Livreur extends Model
         return $this->hasMany(Contrat::class, 'livreur_id');
     }
 
-    public function contratEnCours(): HasOne
+    public function contratsEnCours(): HasMany
     {
-        return $this->hasOne(Contrat::class, 'livreur_id')->where('statut', Contrat::STATUT_EN_COURS);
+        return $this->hasMany(Contrat::class, 'livreur_id')->where('statut', Contrat::STATUT_EN_COURS);
     }
 
     public function scopePeuventRecevoirUneMoto($query)
     {
-        return $query->where('statut', true)->doesntHave('contratEnCours')->orderBy('nom')->orderBy('prenoms');
+        return $query
+            ->where('statut', true)
+            ->whereHas(
+                'contrats',
+                fn ($contrats) => $contrats->where('statut', Contrat::STATUT_EN_COURS),
+                '<',
+                self::NOMBRE_MAX_CONTRATS_EN_COURS
+            )
+            ->orderBy('nom')
+            ->orderBy('prenoms');
     }
 
     public function peutRecevoirUneMoto(): bool
     {
-        return $this->statut && ! $this->contratEnCours()->exists();
+        return $this->statut && $this->contratsEnCours()->count() < self::NOMBRE_MAX_CONTRATS_EN_COURS;
     }
 
     public function documents(): HasMany

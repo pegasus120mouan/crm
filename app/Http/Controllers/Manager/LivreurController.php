@@ -26,7 +26,7 @@ class LivreurController extends Controller
             ->withCount('contrats')
             ->with([
                 'documents:id,livreur_id,type',
-                'contratEnCours' => fn ($query) => $query->with('moto')->withSum('paiements', 'montant'),
+                'contratsEnCours' => fn ($query) => $query->with('moto')->withSum('paiements', 'montant')->orderByDesc('date_debut'),
             ])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($query) use ($search) {
@@ -47,7 +47,7 @@ class LivreurController extends Controller
             'total' => Livreur::count(),
             'kyc_valides' => Livreur::where('kyc_statut', Livreur::KYC_VALIDE)->count(),
             'kyc_a_verifier' => Livreur::where('kyc_statut', Livreur::KYC_EN_ATTENTE)->count(),
-            'sous_contrat' => Livreur::has('contratEnCours')->count(),
+            'sous_contrat' => Livreur::has('contratsEnCours')->count(),
             'proprietaires' => Livreur::whereHas('contrats', fn ($query) => $query->where('statut', Contrat::STATUT_SOLDE))->count(),
         ];
 
