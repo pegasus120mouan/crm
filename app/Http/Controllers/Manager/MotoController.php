@@ -4,15 +4,18 @@ namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
 use App\Models\LocationVente\Contrat;
+use App\Models\LocationVente\Immobilisation;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
 use App\Models\LocationVente\MotoDocument;
 use App\Models\LocationVente\MotoPhoto;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class MotoController extends Controller
 {
@@ -38,7 +41,9 @@ class MotoController extends Controller
         $filtres['statut'] = $statut;
 
         $motos = Moto::query()
-            ->with(['contratActuel.livreur', 'photos', 'documents'])
+            ->with(['contratActuel.livreur', 'contratEnCours.livreur', 'immobilisationEnCours', 'photos', 'documents'])
+            ->withSum('depenses', 'montant')
+            ->withSum('paiements', 'montant')
             ->when($modele !== '', fn ($query) => $query->where('modele', 'like', $this->contient($modele)))
             ->when($immatriculation !== '', fn ($query) => $query->where('immatriculation', 'like', $this->contient(mb_strtoupper($immatriculation))))
             ->when($chassis !== '', fn ($query) => $query->where('numero_chassis', 'like', $this->contient(mb_strtoupper($chassis))))
@@ -64,6 +69,7 @@ class MotoController extends Controller
             'disponibles' => (int) ($parStatut[Moto::STATUT_DISPONIBLE] ?? 0),
             'en_location' => (int) ($parStatut[Moto::STATUT_EN_LOCATION] ?? 0),
             'maintenance' => (int) ($parStatut[Moto::STATUT_MAINTENANCE] ?? 0),
+            'en_panne' => (int) ($parStatut[Moto::STATUT_EN_PANNE] ?? 0),
             'cedees' => (int) ($parStatut[Moto::STATUT_CEDEE] ?? 0),
         ];
 
@@ -112,9 +118,122 @@ class MotoController extends Controller
 
     public function show(Moto $moto)
     {
-        $moto->load(['photos', 'documents']);
+        $moto->load([
+            'photos',
+            'documents',
+            'immobilisations',
+            'depenses' => fn ($query) => $query->with('contrat.livreur')->orderByDesc('date_depense')->orderByDesc('id'),
+            'paiements' => fn ($query) => $query->with('contrat.livreur')->orderByDesc('date_paiement')->orderByDesc('location_vente_paiements.id'),
+        ]);
+        $bilan = $moto->bilanFinancier();
 
-        return view('manager.motos.show', compact('moto'));
+        return view('manager.motos.show', compact('moto', 'bilan'));
+    }
+
+    public function declarerPanne(Request $request, Moto $moto)
+    {
+        $data = $request->validate([
+            'date_debut' => ['required', 'date'],
+            'date_fin' => ['nullable', 'date', 'after_or_equal:date_debut'],
+            'motif' => ['nullable', 'string', 'max:500'],
+            'statut' => ['required', Rule::in(array_keys(Immobilisation::STATUTS))],
+        ]);
+
+        $data['date_fin'] = $data['date_fin'] ?? null;
+        $data['motif'] = $data['motif'] ?? null;
+
+        if ($moto->statut === Moto::STATUT_CEDEE) {
+            throw ValidationException::withMessages([
+                'statut' => 'Une moto cédée ne peut pas être déclarée en panne.',
+            ]);
+        }
+
+        if ($data['statut'] === Immobilisation::STATUT_TERMINEE && blank($data['date_fin'] ?? null)) {
+            throw ValidationException::withMessages([
+                'date_fin' => 'La date de fin est obligatoire pour clôturer l\'immobilisation.',
+            ]);
+        }
+
+        if (
+            $data['statut'] === Immobilisation::STATUT_EN_COURS
+            && filled($data['date_fin'] ?? null)
+            && Carbon::parse($data['date_fin'])->startOfDay()->lt(Carbon::today())
+        ) {
+            throw ValidationException::withMessages([
+                'statut' => 'Cette période est déjà terminée : choisissez le statut Terminée.',
+            ]);
+        }
+
+        $contrat = $moto->contratEnCours;
+
+        if ($contrat && Carbon::parse($data['date_debut'])->startOfDay()->lt($contrat->date_debut->copy()->startOfDay())) {
+            throw ValidationException::withMessages([
+                'date_debut' => 'La panne ne peut pas commencer avant le début du contrat ('.$contrat->date_debut->format('d/m/Y').').',
+            ]);
+        }
+
+        DB::transaction(function () use ($moto, $contrat, $data) {
+            $motoVerrouillee = Moto::query()->lockForUpdate()->findOrFail($moto->id);
+
+            if ($motoVerrouillee->immobilisations()->where('statut', Immobilisation::STATUT_EN_COURS)->exists()) {
+                throw ValidationException::withMessages([
+                    'statut' => 'Cette moto a déjà une immobilisation en cours.',
+                ]);
+            }
+
+            $immobilisation = $motoVerrouillee->immobilisations()->create([
+                'contrat_id' => $contrat?->id,
+                'date_debut' => $data['date_debut'],
+                'date_fin' => $data['date_fin'] ?: null,
+                'motif' => $data['motif'] ?? null,
+                'statut' => $data['statut'],
+            ]);
+
+            if ($immobilisation->statut === Immobilisation::STATUT_EN_COURS) {
+                $motoVerrouillee->update(['statut' => Moto::STATUT_EN_PANNE]);
+            }
+
+            if ($contrat && $immobilisation->date_fin) {
+                $contrat->oublierEcheancier();
+                $contrat->reporterEcheancesApresImmobilisation();
+            }
+        });
+
+        $message = $data['statut'] === Immobilisation::STATUT_EN_COURS
+            ? 'Moto déclarée en panne. Les paiements de la période d\'immobilisation sont suspendus.'
+            : 'Immobilisation enregistrée. Les échéances de la période sont reportées.';
+
+        return back()->with('success', $message);
+    }
+
+    public function cloturerPanne(Request $request, Moto $moto)
+    {
+        $panne = $moto->immobilisationEnCours;
+
+        if (! $panne) {
+            return back()->with('error', 'Cette moto n\'a pas d\'immobilisation en cours.');
+        }
+
+        $data = $request->validate([
+            'date_fin' => ['required', 'date', 'after_or_equal:'.$panne->date_debut->toDateString()],
+        ]);
+
+        DB::transaction(function () use ($moto, $panne, $data) {
+            $panne->update([
+                'date_fin' => $data['date_fin'],
+                'statut' => Immobilisation::STATUT_TERMINEE,
+            ]);
+
+            $moto->update(['statut' => $moto->statutApresPanne()]);
+
+            $contrat = $panne->contrat;
+            if ($contrat && $contrat->statut === Contrat::STATUT_EN_COURS) {
+                $contrat->oublierEcheancier();
+                $contrat->reporterEcheancesApresImmobilisation();
+            }
+        });
+
+        return back()->with('success', 'Moto remise en service. Les échéances de l\'immobilisation sont reportées.');
     }
 
     public function enregistrerPhotos(Request $request, Moto $moto)

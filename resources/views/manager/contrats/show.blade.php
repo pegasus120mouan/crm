@@ -13,6 +13,7 @@
       'partielle' => ['Partiellement payée', 'info'],
       'en_retard' => ['En retard', 'danger'],
       'a_venir' => ['À venir', 'secondary'],
+      'suspendue' => ['Suspendue', 'warning'],
       'annulee' => ['Annulée', 'secondary'],
     ];
   @endphp
@@ -48,6 +49,15 @@
       </button>
     </div>
   </div>
+
+  @if ($panne = $contrat->immobilisations->firstWhere('statut', \App\Models\LocationVente\Immobilisation::STATUT_EN_COURS))
+    <div class="alert alert-warning">
+      Moto en panne ({{ $panne->libelleStatut() }}). Les paiements sont suspendus {{ $panne->periodeLibelle() }}.
+      @if ($panne->motif)
+        Motif : {{ $panne->motif }}.
+      @endif
+    </div>
+  @endif
 
   @if ($contrat->statut === \App\Models\LocationVente\Contrat::STATUT_SOLDE)
     <div class="alert alert-success d-flex align-items-center">
@@ -141,7 +151,12 @@
               @endif
             </dd>
             <dt class="col-6 fw-medium">Total à rembourser</dt>
-            <dd class="col-6 fw-medium">{{ $fcfa($contrat->prix_total) }}</dd>
+            <dd class="col-6 fw-medium">
+              {{ $fcfa($contrat->prix_total) }}
+              @if ($contrat->totalDepenses() > 0)
+                <small class="text-muted d-block fw-normal">dont {{ $fcfa($contrat->totalDepenses()) }} de dépenses moto</small>
+              @endif
+            </dd>
             <dt class="col-6 fw-normal text-muted">Apport initial</dt>
             <dd class="col-6">{{ $fcfa($contrat->apport) }}</dd>
             <dt class="col-6 fw-normal text-muted">Échéance</dt>
@@ -198,7 +213,7 @@
             <tbody>
               @forelse ($echeancier as $ligne)
                 @php
-                  $peutPayer = $enCours && ! in_array($ligne['statut'], ['payee', 'annulee'], true) && $contrat->reste() > 0;
+                  $peutPayer = $enCours && ! in_array($ligne['statut'], ['payee', 'annulee', 'suspendue'], true) && ! $contrat->paiementsSuspendusLe() && $contrat->reste() > 0;
                   $montantAPayer = $ligne['statut'] === 'partielle'
                     ? max(0, $ligne['cumul'] - $contrat->montantPaye())
                     : min($ligne['montant'], $contrat->reste());

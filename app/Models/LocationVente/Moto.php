@@ -4,6 +4,7 @@ namespace App\Models\LocationVente;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -26,11 +27,14 @@ class Moto extends Model
 
     public const STATUT_MAINTENANCE = 'maintenance';
 
+    public const STATUT_EN_PANNE = 'en_panne';
+
     public const STATUT_CEDEE = 'cedee';
 
     public const STATUTS = [
         self::STATUT_DISPONIBLE => 'Disponible',
         self::STATUT_EN_LOCATION => 'En location-vente',
+        self::STATUT_EN_PANNE => 'En panne',
         self::STATUT_MAINTENANCE => 'En maintenance',
         self::STATUT_CEDEE => 'Cédée (hors parc)',
     ];
@@ -126,6 +130,82 @@ class Moto extends Model
         return $this->hasMany(Contrat::class, 'moto_id');
     }
 
+    public function contratEnCours(): HasOne
+    {
+        return $this->hasOne(Contrat::class, 'moto_id')->ofMany(
+            ['date_debut' => 'max', 'id' => 'max'],
+            fn ($query) => $query->where('statut', Contrat::STATUT_EN_COURS)
+        );
+    }
+
+    public function immobilisations(): HasMany
+    {
+        return $this->hasMany(Immobilisation::class, 'moto_id')->orderByDesc('date_debut');
+    }
+
+    public function depenses(): HasMany
+    {
+        return $this->hasMany(Depense::class, 'moto_id');
+    }
+
+    public function paiements(): HasManyThrough
+    {
+        return $this->hasManyThrough(Paiement::class, Contrat::class, 'moto_id', 'contrat_id');
+    }
+
+    /**
+     * Résultat de la moto : montants encaissés − dépenses effectuées.
+     *
+     * @return array{prix_achat: int, total_depenses: int, total_paiements: int, resultat: int, ratio: int|null, sens: string}
+     */
+    public function bilanFinancier(): array
+    {
+        $totalDepenses = array_key_exists('depenses_sum_montant', $this->attributes)
+            ? (int) $this->attributes['depenses_sum_montant']
+            : ($this->relationLoaded('depenses')
+                ? (int) $this->depenses->sum('montant')
+                : (int) $this->depenses()->sum('montant'));
+        $totalPaiements = array_key_exists('paiements_sum_montant', $this->attributes)
+            ? (int) $this->attributes['paiements_sum_montant']
+            : ($this->relationLoaded('paiements')
+                ? (int) $this->paiements->sum('montant')
+                : (int) $this->paiements()->sum('montant'));
+        $resultat = $totalPaiements - $totalDepenses;
+
+        return [
+            'prix_achat' => (int) $this->prix_achat,
+            'total_depenses' => $totalDepenses,
+            'total_paiements' => $totalPaiements,
+            'resultat' => $resultat,
+            'ratio' => $totalDepenses > 0 ? (int) round($totalPaiements * 100 / $totalDepenses) : null,
+            'sens' => match (true) {
+                $resultat > 0 => 'gain',
+                $resultat < 0 => 'perte',
+                default => 'equilibre',
+            },
+        ];
+    }
+
+    public function immobilisationEnCours(): HasOne
+    {
+        return $this->hasOne(Immobilisation::class, 'moto_id')->ofMany(
+            ['date_debut' => 'max', 'id' => 'max'],
+            fn ($query) => $query->where('statut', Immobilisation::STATUT_EN_COURS)
+        );
+    }
+
+    public function peutEtreDeclareeEnPanne(): bool
+    {
+        return ! in_array($this->statut, [self::STATUT_CEDEE, self::STATUT_EN_PANNE], true);
+    }
+
+    public function statutApresPanne(): string
+    {
+        return $this->contrats()->where('statut', Contrat::STATUT_EN_COURS)->exists()
+            ? self::STATUT_EN_LOCATION
+            : self::STATUT_DISPONIBLE;
+    }
+
     public function contratActuel(): HasOne
     {
         return $this->hasOne(Contrat::class, 'moto_id')
@@ -184,7 +264,7 @@ class Moto extends Model
     {
         return match ($this->statut) {
             self::STATUT_EN_LOCATION => 'En Utilisation',
-            self::STATUT_MAINTENANCE => 'En Panne',
+            self::STATUT_MAINTENANCE, self::STATUT_EN_PANNE => 'En Panne',
             self::STATUT_DISPONIBLE => 'Disponible',
             self::STATUT_CEDEE => 'Cédée',
             default => $this->libelleStatut(),
@@ -195,7 +275,7 @@ class Moto extends Model
     {
         return match ($this->statut) {
             self::STATUT_EN_LOCATION => 'bg-success',
-            self::STATUT_MAINTENANCE => 'bg-danger',
+            self::STATUT_MAINTENANCE, self::STATUT_EN_PANNE => 'bg-danger',
             self::STATUT_DISPONIBLE => 'bg-primary',
             default => 'bg-secondary',
         };
@@ -206,6 +286,7 @@ class Moto extends Model
         return match ($this->statut) {
             self::STATUT_DISPONIBLE => 'success',
             self::STATUT_EN_LOCATION => 'primary',
+            self::STATUT_EN_PANNE => 'danger',
             self::STATUT_MAINTENANCE => 'warning',
             default => 'secondary',
         };

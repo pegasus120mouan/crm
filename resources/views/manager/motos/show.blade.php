@@ -22,6 +22,122 @@
     </nav>
   </div>
 
+  @php
+    $fcfa = fn ($montant) => number_format((int) $montant, 0, ',', ' ').' FCFA';
+    $libelleResultat = match ($bilan['sens']) {
+        'gain' => 'Gain',
+        'perte' => 'Perte',
+        default => 'Équilibre',
+    };
+    $couleurResultat = match ($bilan['sens']) {
+        'gain' => 'success',
+        'perte' => 'danger',
+        default => 'secondary',
+    };
+  @endphp
+
+  <div class="card mb-4" id="bilan">
+    <div class="card-header"><h5 class="mb-0">Bilan</h5></div>
+    <div class="card-body">
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+          <div class="border rounded p-3 h-100">
+            <span class="d-block text-muted mb-1">Prix d'acquisition</span>
+            <div class="fw-medium">{{ $fcfa($bilan['prix_achat']) }}</div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="border rounded p-3 h-100">
+            <span class="d-block text-muted mb-1">Dépenses</span>
+            <div class="fw-medium">{{ $fcfa($bilan['total_depenses']) }}</div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="border rounded p-3 h-100">
+            <span class="d-block text-muted mb-1">Paiements encaissés</span>
+            <div class="fw-medium">{{ $fcfa($bilan['total_paiements']) }}</div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="border rounded p-3 h-100">
+            <span class="d-block text-muted mb-1">Ratio</span>
+            <div class="fw-medium text-{{ $couleurResultat }}">{{ $libelleResultat }} {{ $fcfa(abs($bilan['resultat'])) }}</div>
+            @if ($bilan['ratio'] !== null)
+              <small class="text-muted">{{ $bilan['ratio'] }} % des dépenses couvertes</small>
+            @endif
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <h6 class="mb-3">Dépenses</h6>
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Libellé</th>
+                  <th>Livreur</th>
+                  <th class="text-end">Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse ($moto->depenses as $depense)
+                  <tr>
+                    <td>{{ $depense->date_depense->format('d/m/Y') }}</td>
+                    <td>{{ $depense->libelle }}</td>
+                    <td>{{ $depense->contrat?->livreur?->nomComplet() ?: '—' }}</td>
+                    <td class="text-end">{{ $fcfa($depense->montant) }}</td>
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="4" class="text-center text-muted py-3">Aucune dépense</td>
+                  </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <h6 class="mb-3">Paiements</h6>
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Contrat</th>
+                  <th>Livreur</th>
+                  <th class="text-end">Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse ($moto->paiements as $paiement)
+                  <tr>
+                    <td>{{ $paiement->date_paiement->format('d/m/Y') }}</td>
+                    <td>
+                      @if ($paiement->contrat)
+                        <a href="{{ route('manager.contrats.show', $paiement->contrat) }}">{{ $paiement->contrat->reference }}</a>
+                      @else
+                        —
+                      @endif
+                    </td>
+                    <td>{{ $paiement->contrat?->livreur?->nomComplet() ?: '—' }}</td>
+                    <td class="text-end">{{ $fcfa($paiement->montant) }}</td>
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="4" class="text-center text-muted py-3">Aucun paiement</td>
+                  </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row g-4">
     <div class="col-lg-7">
       <div class="card h-100">
@@ -140,6 +256,18 @@
           </form>
         </div>
       </div>
+
+      @if ($moto->peutEtreDeclareeEnPanne() || $moto->immobilisations->isNotEmpty())
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Immobilisation</h6>
+            <a href="{{ route('manager.depenses.index', ['moto' => $moto->id]) }}" class="btn btn-sm btn-outline-primary">Dépense</a>
+          </div>
+          <div class="card-body">
+            @include('manager.motos._immobilisation', ['moto' => $moto])
+          </div>
+        </div>
+      @endif
 
       <div class="card">
         <div class="px-3 py-2 text-white" style="background: #6c757d;">

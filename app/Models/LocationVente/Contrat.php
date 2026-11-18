@@ -7,6 +7,8 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 
 class Contrat extends Model
 {
@@ -32,6 +34,9 @@ class Contrat extends Model
     ];
 
     public const JOURS_TRAVAILLES_PAR_SEMAINE = 6;
+
+    /** @var array<int, Carbon|null>|null */
+    private ?array $echeancesEffectives = null;
 
     protected $table = 'location_vente_contrats';
 
@@ -85,6 +90,16 @@ class Contrat extends Model
     public function paiements(): HasMany
     {
         return $this->hasMany(Paiement::class, 'contrat_id');
+    }
+
+    public function immobilisations(): HasMany
+    {
+        return $this->hasMany(Immobilisation::class, 'contrat_id')->orderBy('date_debut');
+    }
+
+    public function depenses(): HasMany
+    {
+        return $this->hasMany(Depense::class, 'contrat_id');
     }
 
     public function scopeEnCours($query)
@@ -192,7 +207,84 @@ class Contrat extends Model
      */
     public function notreMarge(): int
     {
-        return $this->prix_total - $this->prixAcquisitionMoto();
+        return $this->prix_total - $this->prixAcquisitionMoto() - $this->totalDepenses();
+    }
+
+    public function totalDepenses(): int
+    {
+        if (array_key_exists('depenses_sum_montant', $this->attributes)) {
+            return (int) $this->attributes['depenses_sum_montant'];
+        }
+
+        if ($this->relationLoaded('depenses')) {
+            return (int) $this->depenses->sum('montant');
+        }
+
+        return (int) $this->depenses()->sum('montant');
+    }
+
+    /**
+     * Ajoute une dépense moto au montant à rembourser et allonge l'échéancier.
+     */
+    public function integrerDepense(int $montant): void
+    {
+        $this->recalculerDepuisTotal($this->prix_total + $montant);
+    }
+
+    /**
+     * Retire une dépense déjà ajoutée au montant à rembourser.
+     */
+    public function retirerDepense(int $montant): void
+    {
+        $nouveau = $this->prix_total - $montant;
+
+        if ($nouveau < $this->montantPaye()) {
+            throw ValidationException::withMessages([
+                'montant' => 'Retirer cette dépense rendrait le total inférieur aux '.number_format($this->montantPaye(), 0, ',', ' ').' FCFA déjà encaissés.',
+            ]);
+        }
+
+        $this->recalculerDepuisTotal($nouveau);
+    }
+
+    public function recalculerDepuisTotal(int $prixTotal): void
+    {
+        if ((int) $this->apport >= $prixTotal) {
+            throw ValidationException::withMessages([
+                'montant' => 'Le total à rembourser doit rester supérieur à l\'apport.',
+            ]);
+        }
+
+        $conditions = static::conditionsDepuisTotal(
+            $this->date_debut,
+            $this->frequence,
+            (int) $this->apport,
+            (int) $this->montant_echeance,
+            $prixTotal
+        );
+
+        if ($conditions['nombre'] < 1) {
+            throw ValidationException::withMessages([
+                'montant' => 'Le total doit couvrir au moins une échéance.',
+            ]);
+        }
+
+        if ($conditions['duree_mois'] > 120) {
+            throw ValidationException::withMessages([
+                'montant' => 'Cette dépense allonge le contrat au-delà de 120 mois.',
+            ]);
+        }
+
+        $this->update([
+            'prix_total' => $prixTotal,
+            'marge' => $prixTotal - (int) $this->prix_achat - (int) $this->cout_supplementaire,
+            'duree_mois' => $conditions['duree_mois'],
+            'date_fin' => $conditions['date_fin']->toDateString(),
+        ]);
+
+        $this->oublierEcheancier();
+        $this->reporterEcheancesApresImmobilisation();
+        $this->synchroniserStatut();
     }
 
     public function notreMargeParEcheance(): int
@@ -301,6 +393,19 @@ class Contrat extends Model
     public function echeancesEchues(?CarbonInterface $date = null): int
     {
         $date = Carbon::parse($date ?? Carbon::today())->startOfDay();
+
+        if ($this->aDesImmobilisations()) {
+            $echues = 0;
+
+            foreach ($this->datesEcheancesEffectives() as $numero => $echeance) {
+                if ($echeance !== null && $echeance->lte($date)) {
+                    $echues = $numero;
+                }
+            }
+
+            return $echues;
+        }
+
         $total = $this->nombreEcheances();
         $debut = Carbon::parse($this->date_debut)->startOfDay();
 
@@ -351,14 +456,144 @@ class Contrat extends Model
         }
 
         $paye = $this->montantPaye();
+        $dates = $this->aDesImmobilisations() ? $this->datesEcheancesEffectives() : null;
 
         for ($numero = 1; $numero <= $this->nombreEcheances(); $numero++) {
             if ($this->cumulAttendu($numero) > $paye) {
-                return $this->dateEcheance($numero);
+                return $dates === null ? $this->dateEcheance($numero) : $dates[$numero];
             }
         }
 
         return null;
+    }
+
+    public function paiementsSuspendusLe(?CarbonInterface $date = null): bool
+    {
+        $jour = Carbon::parse($date ?? Carbon::today())->startOfDay();
+
+        return $this->immobilisationsPourEcheancier()->contains(
+            fn (Immobilisation $immobilisation) => $immobilisation->couvre($jour)
+        );
+    }
+
+    public function oublierEcheancier(): void
+    {
+        $this->echeancesEffectives = null;
+        $this->unsetRelation('immobilisations');
+    }
+
+    /**
+     * Repousse la date de fin du contrat après les échéances tombées pendant une immobilisation.
+     */
+    public function reporterEcheancesApresImmobilisation(): void
+    {
+        if ($this->statut !== self::STATUT_EN_COURS || ! $this->aDesImmobilisations()) {
+            return;
+        }
+
+        $this->echeancesEffectives = null;
+        $dates = $this->datesEcheancesEffectives();
+
+        if ($dates === [] || in_array(null, $dates, true)) {
+            return;
+        }
+
+        $derniere = end($dates);
+
+        $this->update([
+            'date_fin' => $derniere->toDateString(),
+            'duree_mois' => static::dureeMoisCouvrant($this->date_debut, $derniere),
+        ]);
+    }
+
+    /**
+     * Dates dues, en sautant les échéances tombées pendant une immobilisation.
+     * Une panne sans date de fin fige les échéances suivantes.
+     *
+     * @return array<int, Carbon|null>
+     */
+    public function datesEcheancesEffectives(): array
+    {
+        if ($this->echeancesEffectives !== null) {
+            return $this->echeancesEffectives;
+        }
+
+        $nombre = $this->nombreEcheances();
+        $immobilisations = $this->immobilisationsPourEcheancier();
+        $dates = [];
+
+        if ($immobilisations->isEmpty()) {
+            for ($numero = 1; $numero <= $nombre; $numero++) {
+                $dates[$numero] = $this->dateEcheance($numero);
+            }
+
+            return $this->echeancesEffectives = $dates;
+        }
+
+        $nominal = 0;
+        $garde = 0;
+        $limite = $nombre + 5000;
+
+        for ($numero = 1; $numero <= $nombre; $numero++) {
+            $trouvee = false;
+
+            while ($garde < $limite) {
+                $garde++;
+                $nominal++;
+                $candidate = $this->dateEcheance($nominal);
+                $blocage = $immobilisations->first(
+                    fn (Immobilisation $immobilisation) => $immobilisation->couvre($candidate)
+                );
+
+                if ($blocage === null) {
+                    $dates[$numero] = $candidate;
+                    $trouvee = true;
+                    break;
+                }
+
+                if ($blocage->date_fin === null) {
+                    for ($reste = $numero; $reste <= $nombre; $reste++) {
+                        $dates[$reste] = null;
+                    }
+
+                    return $this->echeancesEffectives = $dates;
+                }
+            }
+
+            if (! $trouvee) {
+                $dates[$numero] = null;
+            }
+        }
+
+        return $this->echeancesEffectives = $dates;
+    }
+
+    public function dateEcheanceEffective(int $numero): ?Carbon
+    {
+        $dates = $this->datesEcheancesEffectives();
+
+        return $dates[$numero] ?? ($numero < 1 ? $this->dateEcheance($numero) : null);
+    }
+
+    /**
+     * @return Collection<int, Immobilisation>
+     */
+    private function immobilisationsPourEcheancier(): Collection
+    {
+        if (! $this->exists) {
+            return collect();
+        }
+
+        if (! $this->relationLoaded('immobilisations')) {
+            $this->setRelation('immobilisations', $this->immobilisations()->get());
+        }
+
+        return $this->immobilisations;
+    }
+
+    private function aDesImmobilisations(): bool
+    {
+        return $this->immobilisationsPourEcheancier()->isNotEmpty();
     }
 
     /**
@@ -368,16 +603,19 @@ class Contrat extends Model
     {
         $paye = $this->montantPaye();
         $aujourdhui = Carbon::today();
+        $dates = $this->datesEcheancesEffectives();
         $lignes = [];
 
         for ($numero = 1; $numero <= $this->nombreEcheances(); $numero++) {
             $cumul = $this->cumulAttendu($numero);
             $cumulPrecedent = $this->cumulAttendu($numero - 1);
-            $date = $this->dateEcheance($numero);
+            $effective = $dates[$numero] ?? null;
+            $date = $effective ?? $this->dateEcheance($numero);
 
             $statut = match (true) {
                 $paye >= $cumul => 'payee',
                 $this->statut === self::STATUT_RESILIE => 'annulee',
+                $effective === null => 'suspendue',
                 $paye > $cumulPrecedent && $date->gt($aujourdhui) => 'partielle',
                 $date->lte($aujourdhui) => 'en_retard',
                 default => 'a_venir',

@@ -75,6 +75,20 @@ class PaiementController extends Controller
                 throw ValidationException::withMessages(['contrat_id' => "Ce contrat n'est plus en cours : aucun paiement ne peut être ajouté."]);
             }
 
+            $immobilisation = $contrat->immobilisations()
+                ->whereDate('date_debut', '<=', $validated['date_paiement'])
+                ->where(function ($query) use ($validated) {
+                    $query->whereNull('date_fin')
+                        ->orWhereDate('date_fin', '>=', $validated['date_paiement']);
+                })
+                ->first();
+
+            if ($immobilisation) {
+                throw ValidationException::withMessages([
+                    'date_paiement' => 'Les paiements sont suspendus pendant l\'immobilisation ('.$immobilisation->periodeLibelle().').',
+                ]);
+            }
+
             if ($validated['montant'] > $contrat->reste()) {
                 throw ValidationException::withMessages(['montant' => 'Le montant dépasse le reste à payer ('.number_format($contrat->reste(), 0, ',', ' ').' FCFA).']);
             }
@@ -106,7 +120,7 @@ class PaiementController extends Controller
         $contrat = $paiement->contrat;
 
         if ($contrat->statut === Contrat::STATUT_RESILIE) {
-            return back()->with('error', "Ce contrat est résilié : ses paiements ne peuvent plus être annulés.");
+            return back()->with('error', 'Ce contrat est résilié : ses paiements ne peuvent plus être annulés.');
         }
 
         DB::transaction(function () use ($paiement, $contrat) {

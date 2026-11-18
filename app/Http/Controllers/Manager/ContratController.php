@@ -20,7 +20,7 @@ class ContratController extends Controller
         $statut = (string) $request->query('statut', '');
 
         $contrats = Contrat::query()
-            ->with(['livreur', 'moto'])
+            ->with(['livreur', 'moto', 'immobilisations'])
             ->withSum('paiements', 'montant')
             ->when(array_key_exists($statut, Contrat::STATUTS), fn ($query) => $query->where('statut', $statut))
             ->when($search !== '', function ($query) use ($search) {
@@ -36,7 +36,7 @@ class ContratController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $enCours = Contrat::query()->enCours()->withSum('paiements', 'montant')->get();
+        $enCours = Contrat::query()->enCours()->with('immobilisations')->withSum('paiements', 'montant')->get();
 
         $stats = [
             'en_cours' => $enCours->count(),
@@ -145,6 +145,8 @@ class ContratController extends Controller
         $contrat->load([
             'livreur',
             'moto.photos',
+            'immobilisations',
+            'depenses',
             'paiements' => fn ($query) => $query->with('auteur')->orderByDesc('date_paiement')->orderByDesc('id'),
         ]);
 
@@ -249,6 +251,8 @@ class ContratController extends Controller
                 'date_fin' => $dateFin->toDateString(),
             ]);
 
+            $contrat->oublierEcheancier();
+            $contrat->reporterEcheancesApresImmobilisation();
             $contrat->synchroniserStatut();
         });
 

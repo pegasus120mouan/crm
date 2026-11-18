@@ -23,6 +23,7 @@
       ['Dans le parc', $stats['parc'], 'bx-cycling', 'primary', 'parc'],
       ['Disponibles', $stats['disponibles'], 'bx-check-circle', 'success', 'disponible'],
       ['En location-vente', $stats['en_location'], 'bx-transfer', 'info', 'en_location'],
+      ['En panne', $stats['en_panne'], 'bx-error', 'danger', 'en_panne'],
       ['En maintenance', $stats['maintenance'], 'bx-wrench', 'warning', 'maintenance'],
       ['Cédées (hors parc)', $stats['cedees'], 'bx-key', 'secondary', 'cedee'],
     ] as [$libelle, $valeur, $icone, $couleur, $filtre])
@@ -137,6 +138,7 @@
             <th>Châssis</th>
             <th class="text-end">Prix d'acquisition</th>
             <th>Statut</th>
+            <th class="text-center">Écart</th>
             <th>Documents</th>
             <th>Livreur / propriétaire</th>
             <th>Actions</th>
@@ -144,7 +146,11 @@
         </thead>
         <tbody>
           @forelse ($motos as $moto)
-            @php($contrat = $moto->statut === \App\Models\LocationVente\Moto::STATUT_EN_LOCATION || $moto->statut === \App\Models\LocationVente\Moto::STATUT_CEDEE ? $moto->contratActuel : null)
+            @php($contrat = match ($moto->statut) {
+              \App\Models\LocationVente\Moto::STATUT_CEDEE => $moto->contratActuel,
+              \App\Models\LocationVente\Moto::STATUT_EN_LOCATION, \App\Models\LocationVente\Moto::STATUT_EN_PANNE => $moto->contratEnCours,
+              default => null,
+            })
             <tr>
               <td>
                 <div class="d-flex align-items-center">
@@ -164,29 +170,58 @@
                   {{ $moto->immatriculation }}
                 @endif
               </td>
-              <td><small>{{ $moto->numero_chassis ?: '—' }}</small></td>
-              <td class="text-end">{{ number_format((int) $moto->prix_achat, 0, ',', ' ') }} FCFA</td>
-              <td><span class="badge bg-label-{{ $moto->couleurStatut() }}">{{ $moto->libelleStatut() }}</span></td>
               <td>
+                @if ($moto->numero_chassis)
+                  <a href="{{ route('manager.motos.show', $moto) }}#bilan">{{ $moto->numero_chassis }}</a>
+                @else
+                  <span class="text-muted">—</span>
+                @endif
+              </td>
+              <td class="text-end">{{ number_format((int) $moto->prix_achat, 0, ',', ' ') }} FCFA</td>
+              <td>
+                <span class="badge bg-label-{{ $moto->couleurStatut() }}">{{ $moto->libelleStatut() }}</span>
+                @if ($panne = $moto->immobilisationEnCours)
+                  <small class="d-block text-warning mt-1">{{ $panne->libelleStatut() }} · {{ $panne->periodeLibelle() }}</small>
+                  @if ($panne->motif)
+                    <small class="d-block text-muted">{{ $panne->motif }}</small>
+                  @endif
+                @endif
+              </td>
+              <td class="text-center">
+                @php($ecart = $moto->bilanFinancier()['sens'])
+                @if ($ecart === 'gain')
+                  <svg class="ecart-icone ecart-gain" viewBox="0 0 48 48" width="32" height="32" role="img" aria-label="Gain">
+                    <title>Gain</title>
+                    <circle cx="24" cy="24" r="24" fill="#2fbe4f"/>
+                    <polyline points="11,31 19,21 26,27 36,13" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <polyline points="28,13 36,13 36,21" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                @elseif ($ecart === 'perte')
+                  <svg class="ecart-icone ecart-perte" viewBox="0 0 48 48" width="32" height="32" role="img" aria-label="Perte">
+                    <title>Perte</title>
+                    <circle cx="24" cy="24" r="24" fill="#e53935"/>
+                    <polyline points="11,16 19,26 26,20 36,34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <polyline points="28,34 36,34 36,26" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                @else
+                  <span class="text-muted">—</span>
+                @endif
+              </td>
+              <td class="text-center">
                 @php($documentsMoto = $moto->documentsParType())
                 @if ($documentsMoto === [])
-                  <span class="text-muted">—</span>
+                  <span class="text-muted">0</span>
                 @else
-                  @foreach (\App\Models\LocationVente\MotoDocument::TYPES as $type => $libelle)
-                    @php($document = $documentsMoto[$type] ?? null)
-                    @if ($document)
-                      <div class="mb-1">
-                        <span class="badge bg-label-{{ $document->couleurValidite() }}">
-                          {{ $libelle }}
-                          @if ($document->date_fin)
-                            · {{ $document->date_fin->format('d/m/Y') }}
-                          @elseif ($document->numero)
-                            · {{ $document->numero }}
-                          @endif
-                        </span>
-                      </div>
-                    @endif
-                  @endforeach
+                  @php($detailDocuments = collect(\App\Models\LocationVente\MotoDocument::TYPES)->map(function (string $libelle, string $type) use ($documentsMoto) {
+                      $document = $documentsMoto[$type] ?? null;
+                      if (! $document) {
+                          return null;
+                      }
+                      $precision = $document->date_fin?->format('d/m/Y') ?: $document->numero;
+
+                      return e($precision ? $libelle.' · '.$precision : $libelle);
+                  })->filter()->implode('<br>'))
+                  <button type="button" class="doc-nombre" data-bs-toggle="popover" data-bs-placement="left" data-bs-html="true" data-bs-title="Documents" data-bs-content="{!! $detailDocuments !!}">{{ count($documentsMoto) }}</button>
                 @endif
               </td>
               <td>
@@ -207,6 +242,15 @@
                     <i class="icon-base bx bx-user-plus me-1"></i> Attribuer
                   </button>
                 @endif
+                @if ($moto->immobilisationEnCours)
+                  <button type="button" class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#modalPanne{{ $moto->id }}" title="Remettre la moto en service">
+                    <i class="icon-base bx bx-wrench me-1"></i> En service
+                  </button>
+                @elseif ($moto->peutEtreDeclareeEnPanne())
+                  <button type="button" class="btn btn-sm btn-warning me-1" data-bs-toggle="modal" data-bs-target="#modalPanne{{ $moto->id }}" title="Déclarer la moto en panne">
+                    <i class="icon-base bx bx-error me-1"></i> En panne
+                  </button>
+                @endif
                 <button type="button" class="btn btn-sm btn-icon btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalModifierMoto{{ $moto->id }}" title="Modifier">
                   <i class="icon-base bx bx-edit"></i>
                 </button>
@@ -225,7 +269,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="8" class="text-center py-4">Aucune moto ne correspond à cette recherche</td>
+              <td colspan="9" class="text-center py-4">Aucune moto ne correspond à cette recherche</td>
             </tr>
           @endforelse
         </tbody>
@@ -280,11 +324,53 @@
         </div>
       </div>
     </div>
+    @if ($moto->immobilisationEnCours || $moto->peutEtreDeclareeEnPanne())
+      <div class="modal fade" id="modalPanne{{ $moto->id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">{{ $moto->immobilisationEnCours ? 'Immobilisation' : 'Déclarer en panne' }} — {{ trim($moto->marque.' '.$moto->modele) }}</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              @include('manager.motos._immobilisation', ['moto' => $moto])
+            </div>
+          </div>
+        </div>
+      </div>
+    @endif
   @endforeach
 
   @include('manager._confirmation')
   @include('manager.contrats._modal_nouveau')
 @endsection
+
+@push('head')
+<style>
+  .ecart-icone {
+    display: inline-block;
+    vertical-align: middle;
+    filter: drop-shadow(2px 3px 0 rgba(67, 89, 113, .18));
+  }
+  .doc-nombre {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 .45rem;
+    border: 0;
+    border-radius: 999px;
+    background: #e7e7ff;
+    color: #696cff;
+    font-weight: 600;
+    line-height: 1;
+    cursor: default;
+  }
+  .doc-nombre:hover,
+  .doc-nombre:focus { background: #dcdcff; }
+</style>
+@endpush
 
 @push('scripts')
 <script>
@@ -313,6 +399,16 @@
       event.preventDefault();
       alert('Photos manquantes : ' + manquantes.join(', ') + '.');
     }
+  });
+
+  document.querySelectorAll('.doc-nombre').forEach(function (element) {
+    if (!window.bootstrap || !bootstrap.Popover) return;
+    new bootstrap.Popover(element, {
+      container: 'body',
+      html: true,
+      trigger: 'hover focus',
+      sanitize: false,
+    });
   });
 </script>
 @endpush

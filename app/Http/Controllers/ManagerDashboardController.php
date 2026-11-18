@@ -6,6 +6,7 @@ use App\Models\Boutique;
 use App\Models\Commande;
 use App\Models\Commission;
 use App\Models\LocationVente\Contrat;
+use App\Models\LocationVente\Depense;
 use App\Models\LocationVente\Paiement;
 use App\Models\PaiementCommission;
 use App\Models\Utilisateur;
@@ -184,6 +185,7 @@ class ManagerDashboardController extends Controller
 
         $enRetard = Contrat::query()
             ->enCours()
+            ->with('immobilisations')
             ->withSum('paiements', 'montant')
             ->get()
             ->filter(fn (Contrat $contrat) => $contrat->retard() > 0);
@@ -197,11 +199,22 @@ class ManagerDashboardController extends Controller
         return [
             'investi' => $investi,
             'a_payer' => $aPayer,
-            'marges' => $aPayer - $investi,
+            'marges' => $aPayer - $investi - $this->depensesPortefeuille(),
             'paye_mois' => $payeMois,
             'paye_annee' => $payeAnnee,
             'retards' => $enRetard->count(),
             'montant_retard' => (int) $enRetard->sum(fn (Contrat $contrat) => $contrat->retard()),
         ];
+    }
+
+    private function depensesPortefeuille(): int
+    {
+        if (! Schema::hasTable('location_vente_depenses')) {
+            return 0;
+        }
+
+        return (int) Depense::query()
+            ->whereHas('contrat', fn ($query) => $query->where('statut', '!=', Contrat::STATUT_RESILIE))
+            ->sum('montant');
     }
 }

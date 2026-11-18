@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\LocationVente\Contrat;
+use App\Models\LocationVente\Depense;
+use App\Models\LocationVente\Immobilisation;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
 use App\Models\LocationVente\MotoPhoto;
@@ -44,6 +46,8 @@ class LocationVenteTest extends TestCase
             'database/migrations/2026_10_15_000007_add_duree_and_date_fin_to_location_vente_contrats.php',
             'database/migrations/2026_11_13_192510_add_credentials_to_location_vente_livreurs.php',
             'database/migrations/2026_11_14_133750_create_location_vente_moto_documents_table.php',
+            'database/migrations/2026_11_18_000008_create_location_vente_immobilisations_table.php',
+            'database/migrations/2026_11_18_000009_create_location_vente_depenses_table.php',
         ]]);
     }
 
@@ -779,10 +783,316 @@ class LocationVenteTest extends TestCase
             ->assertSee(route('manager.motos.photo', [$contrat->moto, 'droite']), false);
     }
 
+    public function test_a_breakdown_stops_payments_and_postpones_installments(): void
+    {
+        Carbon::setTestNow('2026-10-30 10:00:00');
+        $contrat = $this->contrat([
+            'date_debut' => '2026-10-01',
+            'frequence' => 'hebdomadaire',
+            'montant_echeance' => 10000,
+            'prix_total' => 100000,
+        ]);
+        $moto = $contrat->moto;
+
+        $this->assertSame(4, $contrat->echeancesEchues());
+        $this->assertSame('2026-10-22', $contrat->dateEcheance(3)->toDateString());
+
+        $cedee = Moto::create([
+            'marque' => 'TVS',
+            'modele' => 'HLX',
+            'immatriculation' => 'CD 5678 CI',
+            'statut' => Moto::STATUT_CEDEE,
+        ]);
+        $this->asManager()->from(route('manager.motos.index'))
+            ->post(route('manager.motos.panne', $cedee), [
+                'date_debut' => '2026-10-20',
+                'statut' => Immobilisation::STATUT_EN_COURS,
+            ])->assertSessionHasErrors('statut');
+        $this->assertSame(Moto::STATUT_CEDEE, $cedee->fresh()->statut);
+
+        $this->asManager()->from(route('manager.motos.index'))
+            ->post(route('manager.motos.panne', $moto), [
+                'date_debut' => '2026-10-01',
+                'date_fin' => '2026-10-25',
+                'statut' => Immobilisation::STATUT_EN_COURS,
+            ])->assertSessionHasErrors('statut');
+
+        $this->asManager()->from(route('manager.contrats.show', $contrat))
+            ->post(route('manager.motos.panne', $moto), [
+                'date_debut' => '2026-10-20',
+                'date_fin' => '2026-11-02',
+                'statut' => Immobilisation::STATUT_EN_COURS,
+                'motif' => 'Moteur',
+            ])->assertRedirect(route('manager.contrats.show', $contrat))
+            ->assertSessionHas('success');
+
+        $contrat->refresh();
+        $this->assertSame(Moto::STATUT_EN_PANNE, $moto->fresh()->statut);
+        $this->assertSame(2, $contrat->echeancesEchues());
+        $this->assertSame(20000, $contrat->retard());
+        $this->assertSame('2026-11-05', $contrat->dateEcheanceEffective(3)->toDateString());
+        $this->assertSame('2026-12-24', $contrat->date_fin->toDateString());
+        $this->assertSame(3, $contrat->duree_mois);
+
+        $this->asManager()->post('/manager/paiements', [
+            'contrat_id' => $contrat->id,
+            'montant' => 10000,
+            'date_paiement' => '2026-10-22',
+            'mode' => 'Espèces',
+        ])->assertSessionHasErrors('date_paiement');
+        $this->assertSame(0, $contrat->paiements()->count());
+
+        $this->asManager()->post('/manager/paiements', [
+            'contrat_id' => $contrat->id,
+            'montant' => 10000,
+            'date_paiement' => '2026-10-15',
+            'mode' => 'Espèces',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(10000, $contrat->fresh()->retard());
+
+        $this->asManager()->get(route('manager.motos.index'))
+            ->assertSee('En panne')
+            ->assertSee('En cours')
+            ->assertSee('du 20/10/2026 au 02/11/2026')
+            ->assertSee('Moteur')
+            ->assertSee($contrat->reference);
+
+        $this->asManager()->get(route('manager.contrats.show', $contrat))
+            ->assertSee('Les paiements sont suspendus du 20/10/2026 au 02/11/2026')
+            ->assertSee('05/11/2026')
+            ->assertDontSee('22/10/2026');
+
+        $this->asManager()->from(route('manager.motos.show', $moto))
+            ->patch(route('manager.motos.panne.cloturer', $moto), [
+                'date_fin' => '2026-11-02',
+            ])->assertRedirect(route('manager.motos.show', $moto));
+
+        $this->assertSame(Moto::STATUT_EN_LOCATION, $moto->fresh()->statut);
+        $this->assertSame(Immobilisation::STATUT_TERMINEE, $moto->immobilisations()->first()->statut);
+        $this->assertNull($moto->fresh()->immobilisationEnCours);
+    }
+
+    public function test_an_open_breakdown_freezes_installments_until_the_moto_is_back(): void
+    {
+        Carbon::setTestNow('2026-10-30 10:00:00');
+        $contrat = $this->contrat([
+            'date_debut' => '2026-10-01',
+            'frequence' => 'hebdomadaire',
+            'montant_echeance' => 10000,
+            'prix_total' => 100000,
+        ]);
+
+        $this->asManager()->post(route('manager.motos.panne', $contrat->moto), [
+            'date_debut' => '2026-10-20',
+            'statut' => Immobilisation::STATUT_EN_COURS,
+        ])->assertRedirect();
+
+        $contrat->refresh();
+        $ligne = collect($contrat->echeancier())->firstWhere('numero', 3);
+        $this->assertSame('suspendue', $ligne['statut']);
+        $this->assertSame('2026-10-22', $ligne['date']->toDateString());
+        $this->assertSame(2, $contrat->echeancesEchues());
+        $this->assertNull($contrat->date_fin);
+        $this->assertTrue($contrat->paiementsSuspendusLe());
+
+        $this->asManager()->post('/manager/paiements', [
+            'contrat_id' => $contrat->id,
+            'montant' => 10000,
+            'date_paiement' => '2026-10-30',
+            'mode' => 'Wave',
+        ])->assertSessionHasErrors('date_paiement');
+
+        $this->asManager()->post(route('manager.motos.panne', $contrat->moto), [
+            'date_debut' => '2026-11-10',
+            'statut' => Immobilisation::STATUT_EN_COURS,
+        ])->assertSessionHasErrors('statut');
+
+        $this->asManager()->patch(route('manager.motos.panne.cloturer', $contrat->moto), [
+            'date_fin' => '2026-11-02',
+        ])->assertRedirect();
+
+        $contrat = $contrat->fresh();
+        $this->assertSame(Moto::STATUT_EN_LOCATION, $contrat->moto->statut);
+        $this->assertSame('2026-11-05', $contrat->dateEcheanceEffective(3)->toDateString());
+        $this->assertSame('a_venir', collect($contrat->echeancier())->firstWhere('numero', 3)['statut']);
+        $this->assertSame('2026-12-24', $contrat->date_fin->toDateString());
+        $this->assertFalse($contrat->paiementsSuspendusLe(Carbon::parse('2026-11-03')));
+        $this->assertTrue($contrat->paiementsSuspendusLe(Carbon::parse('2026-10-30')));
+    }
+
+    public function test_a_moto_expense_is_added_to_the_amount_to_repay_and_can_extend_the_contract(): void
+    {
+        $contrat = $this->contrat([
+            'date_debut' => '2026-10-01',
+            'frequence' => 'hebdomadaire',
+            'montant_echeance' => 10000,
+            'prix_total' => 100000,
+        ]);
+        $marge = $contrat->fresh()->load('moto')->notreMarge();
+
+        $this->asManager()->post(route('manager.depenses.store'), [
+            'moto_id' => $contrat->moto_id,
+            'date_depense' => '2026-10-03',
+            'montant' => '15 000',
+            'libelle' => 'Réparation moteur',
+        ])->assertRedirect(route('manager.depenses.index'))
+            ->assertSessionHas('success');
+
+        $contrat->refresh();
+        $this->assertSame(115000, $contrat->prix_total);
+        $this->assertSame(12, $contrat->nombreEcheances());
+        $this->assertSame('2026-12-24', $contrat->date_fin->toDateString());
+        $this->assertSame($marge, $contrat->fresh()->load('moto')->notreMarge());
+
+        $contrat->moto->update(['numero_chassis' => 'LD3PCJ6J9T1728776']);
+
+        $this->asManager()->get(route('manager.depenses.index'))
+            ->assertOk()
+            ->assertSee('Dépenses moto')
+            ->assertSee('Nom du livreur, n° de contrat ou plaque')
+            ->assertSee('placeholder="30 000"', false)
+            ->assertSee('Ouvrir le calendrier', false)
+            ->assertSee('value="2026-10-03"', false)
+            ->assertDontSee('name="notes"', false)
+            ->assertSee('Réparation moteur')
+            ->assertSee('15 000')
+            ->assertSee('Livreur')
+            ->assertSee('LD3PCJ6J9T1728776')
+            ->assertSee('Ibrahim Kone')
+            ->assertSee($contrat->reference);
+
+        $this->asManager()->get(route('manager.contrats.show', $contrat))
+            ->assertSee('115 000 FCFA')
+            ->assertSee('24/12/2026')
+            ->assertSee('dépenses moto');
+
+        $depense = $contrat->depenses()->firstOrFail();
+        $this->asManager()->delete(route('manager.depenses.destroy', $depense))
+            ->assertSessionHas('success');
+
+        $contrat->refresh();
+        $this->assertSame(100000, $contrat->prix_total);
+        $this->assertSame(10, $contrat->nombreEcheances());
+        $this->assertSame('2026-12-10', $contrat->date_fin->toDateString());
+        $this->assertSame(0, $contrat->depenses()->count());
+
+        $this->asManager()->post(route('manager.depenses.store'), [
+            'moto_id' => $contrat->moto_id,
+            'date_depense' => '2026-10-03',
+            'montant' => 15000,
+            'libelle' => 'Réparation moteur',
+        ])->assertRedirect();
+
+        $this->asManager()->post('/manager/paiements', $this->paiement($contrat, 110000))
+            ->assertSessionHasNoErrors();
+
+        $depense = $contrat->fresh()->depenses()->firstOrFail();
+        $this->asManager()->delete(route('manager.depenses.destroy', $depense))
+            ->assertSessionHasErrors('montant');
+        $this->assertSame(115000, $contrat->fresh()->prix_total);
+
+        $seule = Moto::create([
+            'marque' => 'TVS',
+            'modele' => 'HLX',
+            'immatriculation' => 'CD 9999 CI',
+            'statut' => Moto::STATUT_DISPONIBLE,
+        ]);
+        $this->asManager()->post(route('manager.depenses.store'), [
+            'moto_id' => $seule->id,
+            'date_depense' => '2026-10-03',
+            'montant' => 8000,
+            'libelle' => 'Vidange',
+        ])->assertSessionHas('success', fn (string $message) => str_contains($message, 'pas de contrat'));
+
+        $this->assertDatabaseHas('location_vente_depenses', [
+            'moto_id' => $seule->id,
+            'contrat_id' => null,
+            'montant' => 8000,
+        ]);
+    }
+
+    public function test_the_chassis_opens_the_moto_expenses_payments_and_result(): void
+    {
+        $contrat = $this->contrat([
+            'prix_total' => 800000,
+            'montant_echeance' => 50000,
+        ]);
+        $moto = $contrat->moto;
+        $moto->update([
+            'numero_chassis' => 'LD3PCJ6J9T1728776',
+            'prix_achat' => 500000,
+        ]);
+        $contrat->paiements()->create([
+            'montant' => 20000,
+            'date_paiement' => '2026-10-03',
+            'mode' => 'Wave',
+        ]);
+        Depense::query()->create([
+            'moto_id' => $moto->id,
+            'contrat_id' => $contrat->id,
+            'date_depense' => '2026-10-02',
+            'montant' => 50000,
+            'libelle' => 'Réparation frein',
+        ]);
+
+        $bilan = $moto->fresh()->bilanFinancier();
+        $this->assertSame(-30000, $bilan['resultat']);
+        $this->assertSame(40, $bilan['ratio']);
+        $this->assertSame('perte', $bilan['sens']);
+
+        $this->asManager()->get(route('manager.motos.index'))
+            ->assertOk()
+            ->assertSee(route('manager.motos.show', $moto).'#bilan', false)
+            ->assertSee('LD3PCJ6J9T1728776')
+            ->assertSee('Écart')
+            ->assertSee('ecart-perte', false)
+            ->assertDontSee('ecart-gain', false);
+
+        $this->asManager()->get(route('manager.motos.show', $moto))
+            ->assertOk()
+            ->assertSee('Réparation frein')
+            ->assertSee('20 000')
+            ->assertSee('50 000')
+            ->assertSee('Perte')
+            ->assertSee('30 000')
+            ->assertSee('40 %')
+            ->assertSee('Ibrahim Kone')
+            ->assertSee($contrat->reference)
+            ->assertDontSee('Gain');
+
+        $contrat->paiements()->create([
+            'montant' => 80000,
+            'date_paiement' => '2026-10-10',
+            'mode' => 'Espèces',
+        ]);
+
+        $bilan = $moto->fresh()->bilanFinancier();
+        $this->assertSame(50000, $bilan['resultat']);
+        $this->assertSame(200, $bilan['ratio']);
+        $this->assertSame('gain', $bilan['sens']);
+
+        $this->asManager()->get(route('manager.motos.show', $moto))
+            ->assertOk()
+            ->assertSee('Gain')
+            ->assertSee('50 000')
+            ->assertSee('200 %')
+            ->assertSee('80 000')
+            ->assertDontSee('Perte');
+
+        $this->asManager()->get(route('manager.motos.index'))
+            ->assertOk()
+            ->assertSee('ecart-gain', false)
+            ->assertDontSee('ecart-perte', false);
+    }
+
     public function test_commercial_cannot_access_location_vente(): void
     {
         $this->withSession(['utilisateur' => ['id' => 2, 'login' => 'pauline', 'role' => 'commercial']])
             ->get('/manager/motos')
+            ->assertRedirect(route('dashboard'));
+
+        $this->withSession(['utilisateur' => ['id' => 2, 'login' => 'pauline', 'role' => 'commercial']])
+            ->get(route('manager.depenses.index'))
             ->assertRedirect(route('dashboard'));
     }
 

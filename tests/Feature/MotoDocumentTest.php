@@ -41,6 +41,8 @@ class MotoDocumentTest extends TestCase
             'database/migrations/2026_10_15_000007_add_duree_and_date_fin_to_location_vente_contrats.php',
             'database/migrations/2026_11_13_192510_add_credentials_to_location_vente_livreurs.php',
             'database/migrations/2026_11_14_133750_create_location_vente_moto_documents_table.php',
+            'database/migrations/2026_11_18_000008_create_location_vente_immobilisations_table.php',
+            'database/migrations/2026_11_18_000009_create_location_vente_depenses_table.php',
         ]]);
     }
 
@@ -104,6 +106,14 @@ class MotoDocumentTest extends TestCase
         $this->assertSame('2026-11-30', $frais->documentsParType()['vignette']->date_fin->toDateString());
         $this->assertSame(58, $frais->documentsParType()['vignette']->joursRestants());
         $this->assertSame(17, $frais->documentsParType()['assurance']->joursRestants());
+
+        $this->asManager()->get('/manager/motos')
+            ->assertOk()
+            ->assertSee('class="doc-nombre"', false)
+            ->assertSee('>3<', false)
+            ->assertSee('Vignette · 30/11/2026', false)
+            ->assertSee('Assurance · 20/10/2026', false)
+            ->assertSee('Carte grise · AB 1234 CI', false);
 
         $this->asManager()->get('/manager/documents')
             ->assertOk()

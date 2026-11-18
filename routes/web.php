@@ -47,8 +47,14 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::get('/motos/{moto}', [Manager\MotoController::class, 'show'])->name('motos.show');
     Route::post('/motos/{moto}/photos', [Manager\MotoController::class, 'enregistrerPhotos'])->name('motos.photos');
     Route::post('/motos/{moto}/papiers', [Manager\MotoController::class, 'enregistrerPapiers'])->name('motos.papiers');
+    Route::post('/motos/{moto}/panne', [Manager\MotoController::class, 'declarerPanne'])->name('motos.panne');
+    Route::patch('/motos/{moto}/panne', [Manager\MotoController::class, 'cloturerPanne'])->name('motos.panne.cloturer');
     Route::put('/motos/{moto}', [Manager\MotoController::class, 'update'])->name('motos.update');
     Route::delete('/motos/{moto}', [Manager\MotoController::class, 'destroy'])->name('motos.destroy');
+
+    Route::get('/depenses', [Manager\DepenseController::class, 'index'])->name('depenses.index');
+    Route::post('/depenses', [Manager\DepenseController::class, 'store'])->name('depenses.store');
+    Route::delete('/depenses/{depense}', [Manager\DepenseController::class, 'destroy'])->name('depenses.destroy');
 
     Route::get('/documents', [Manager\MotoDocumentController::class, 'index'])->name('documents.index');
     Route::post('/documents', [Manager\MotoDocumentController::class, 'store'])->name('documents.store');

@@ -74,7 +74,7 @@
               </td>
               <td>
                 @if ($moto->numero_chassis)
-                  <a href="{{ route('manager.motos.show', $moto) }}">{{ $moto->numero_chassis }}</a>
+                  <a href="{{ route('manager.motos.show', $moto) }}#bilan">{{ $moto->numero_chassis }}</a>
                 @else
                   -
                 @endif
