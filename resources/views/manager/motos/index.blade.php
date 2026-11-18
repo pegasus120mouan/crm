@@ -130,18 +130,17 @@
       <h5 class="mb-0">Motos</h5>
     </div>
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover align-middle table-motos mb-0">
         <thead>
           <tr>
             <th>Moto</th>
             <th>Immatriculation</th>
             <th>Châssis</th>
-            <th class="text-end">Prix d'acquisition</th>
             <th>Statut</th>
             <th class="text-center">Écart</th>
-            <th>Documents</th>
-            <th>Livreur / propriétaire</th>
-            <th>Actions</th>
+            <th class="text-center">Documents</th>
+            <th class="text-center">Livreur / propriétaire</th>
+            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -152,7 +151,7 @@
               default => null,
             })
             <tr>
-              <td>
+              <td class="moto-identite">
                 <div class="d-flex align-items-center">
                   @if ($principale = $moto->photoPrincipale())
                     <img src="{{ route('manager.motos.photo', [$moto, $principale->face]) }}?v={{ $principale->updated_at?->timestamp }}" alt="" class="rounded me-2 flex-shrink-0" style="width: 48px; height: 36px; object-fit: cover;" loading="lazy">
@@ -163,25 +162,24 @@
                   </div>
                 </div>
               </td>
-              <td class="fw-medium">
+              <td class="moto-plaque fw-medium">
                 @if ($moto->immatriculationEnCours())
                   <span class="badge bg-label-warning">Immat. en cours</span>
                 @else
                   {{ $moto->immatriculation }}
                 @endif
               </td>
-              <td>
+              <td class="moto-chassis">
                 @if ($moto->numero_chassis)
                   <a href="{{ route('manager.motos.show', $moto) }}#bilan">{{ $moto->numero_chassis }}</a>
                 @else
                   <span class="text-muted">—</span>
                 @endif
               </td>
-              <td class="text-end">{{ number_format((int) $moto->prix_achat, 0, ',', ' ') }} FCFA</td>
-              <td>
+              <td class="moto-statut">
                 <span class="badge bg-label-{{ $moto->couleurStatut() }}">{{ $moto->libelleStatut() }}</span>
                 @if ($panne = $moto->immobilisationEnCours)
-                  <small class="d-block text-warning mt-1">{{ $panne->libelleStatut() }} · {{ $panne->periodeLibelle() }}</small>
+                  <small class="moto-statut-detail d-block">{{ $panne->libelleStatut() }} · {{ $panne->periodeLibelle() }}</small>
                   @if ($panne->motif)
                     <small class="d-block text-muted">{{ $panne->motif }}</small>
                   @endif
@@ -224,31 +222,28 @@
                   <button type="button" class="doc-nombre" data-bs-toggle="popover" data-bs-placement="left" data-bs-html="true" data-bs-title="Documents" data-bs-content="{!! $detailDocuments !!}">{{ count($documentsMoto) }}</button>
                 @endif
               </td>
-              <td>
-                @if ($contrat)
-                  {{ $contrat->livreur?->nomComplet() }}
-                  <br>
-                  <a href="{{ route('manager.contrats.show', $contrat) }}"><small>{{ $contrat->reference }}</small></a>
-                  @if ($contrat->date_solde)
-                    <small class="text-muted">· propriétaire depuis le {{ $contrat->date_solde->format('d/m/Y') }}</small>
-                  @endif
+              <td class="moto-livreur text-center">
+                @if ($contrat?->livreur)
+                  @php($livreur = $contrat->livreur)
+                  @php($detailLivreur = collect([
+                      e($livreur->nomComplet()),
+                      $livreur->contact ? e($livreur->contact) : null,
+                      e($contrat->reference.' · '.$contrat->libelleStatut()),
+                      $contrat->date_debut ? e('Début le '.$contrat->date_debut->format('d/m/Y')) : null,
+                      $contrat->date_solde ? e('Propriétaire depuis le '.$contrat->date_solde->format('d/m/Y')) : null,
+                  ])->filter()->implode('<br>'))
+                  <button type="button" class="livreur-photo" data-bs-toggle="popover" data-bs-placement="left" data-bs-html="true" data-bs-title="Livreur" data-bs-content="{!! $detailLivreur !!}">
+                    <img src="{{ route('manager.livreurs.photo', $livreur) }}?v={{ optional($livreur->updated_at)->timestamp }}" alt="{{ $livreur->nomComplet() }}" class="rounded-circle" width="40" height="40" loading="lazy">
+                  </button>
                 @else
                   <span class="text-muted">—</span>
                 @endif
               </td>
-              <td class="text-nowrap">
+              <td>
+                <div class="moto-actions">
                 @if ($moto->statut === \App\Models\LocationVente\Moto::STATUT_DISPONIBLE)
-                  <button type="button" class="btn btn-sm btn-success me-1" data-bs-toggle="modal" data-bs-target="#modalNouveauContrat" data-moto-id="{{ $moto->id }}" title="Attribuer cette moto à un livreur">
+                  <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modalNouveauContrat" data-moto-id="{{ $moto->id }}" title="Attribuer cette moto à un livreur">
                     <i class="icon-base bx bx-user-plus me-1"></i> Attribuer
-                  </button>
-                @endif
-                @if ($moto->immobilisationEnCours)
-                  <button type="button" class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#modalPanne{{ $moto->id }}" title="Remettre la moto en service">
-                    <i class="icon-base bx bx-wrench me-1"></i> En service
-                  </button>
-                @elseif ($moto->peutEtreDeclareeEnPanne())
-                  <button type="button" class="btn btn-sm btn-warning me-1" data-bs-toggle="modal" data-bs-target="#modalPanne{{ $moto->id }}" title="Déclarer la moto en panne">
-                    <i class="icon-base bx bx-error me-1"></i> En panne
                   </button>
                 @endif
                 <button type="button" class="btn btn-sm btn-icon btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalModifierMoto{{ $moto->id }}" title="Modifier">
@@ -265,11 +260,12 @@
                   data-confirm-url="{{ route('manager.motos.destroy', $moto) }}">
                   <i class="icon-base bx bx-trash"></i>
                 </button>
+                </div>
               </td>
             </tr>
           @empty
             <tr>
-              <td colspan="9" class="text-center py-4">Aucune moto ne correspond à cette recherche</td>
+              <td colspan="8" class="text-center py-4">Aucune moto ne correspond à cette recherche</td>
             </tr>
           @endforelse
         </tbody>
@@ -324,21 +320,6 @@
         </div>
       </div>
     </div>
-    @if ($moto->immobilisationEnCours || $moto->peutEtreDeclareeEnPanne())
-      <div class="modal fade" id="modalPanne{{ $moto->id }}" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">{{ $moto->immobilisationEnCours ? 'Immobilisation' : 'Déclarer en panne' }} — {{ trim($moto->marque.' '.$moto->modele) }}</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-              @include('manager.motos._immobilisation', ['moto' => $moto])
-            </div>
-          </div>
-        </div>
-      </div>
-    @endif
   @endforeach
 
   @include('manager._confirmation')
@@ -351,6 +332,32 @@
     display: inline-block;
     vertical-align: middle;
     filter: drop-shadow(2px 3px 0 rgba(67, 89, 113, .18));
+  }
+  .table-motos { min-width: 1180px; }
+  .table-motos th {
+    white-space: nowrap;
+    font-size: .75rem;
+    letter-spacing: .03em;
+  }
+  .moto-identite { min-width: 190px; }
+  .moto-identite .fw-medium,
+  .moto-plaque,
+  .moto-chassis,
+  .moto-livreur { white-space: nowrap; }
+  .moto-chassis { font-size: .8125rem; }
+  .moto-statut { min-width: 150px; }
+  .moto-statut-detail {
+    max-width: 190px;
+    margin-top: .25rem;
+    color: #a15c07;
+    line-height: 1.3;
+  }
+  .moto-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .35rem;
+    white-space: nowrap;
   }
   .doc-nombre {
     display: inline-flex;
@@ -369,6 +376,15 @@
   }
   .doc-nombre:hover,
   .doc-nombre:focus { background: #dcdcff; }
+  .livreur-photo {
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    line-height: 0;
+    cursor: default;
+  }
+  .livreur-photo img { object-fit: cover; display: block; }
 </style>
 @endpush
 
@@ -401,7 +417,7 @@
     }
   });
 
-  document.querySelectorAll('.doc-nombre').forEach(function (element) {
+  document.querySelectorAll('.doc-nombre, .livreur-photo').forEach(function (element) {
     if (!window.bootstrap || !bootstrap.Popover) return;
     new bootstrap.Popover(element, {
       container: 'body',

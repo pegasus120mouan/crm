@@ -748,6 +748,13 @@ class LocationVenteTest extends TestCase
             $this->asManager()->get($url)->assertOk()->assertSee('Ibrahim Kone');
         }
 
+        $this->asManager()->get('/manager/motos')
+            ->assertSee(route('manager.livreurs.photo', $contrat->livreur_id), false)
+            ->assertSee($contrat->reference)
+            ->assertSee('0701020304')
+            ->assertSee('Début le 01/10/2026')
+            ->assertDontSee('>Prix d\'acquisition<', false);
+
         foreach (['/manager/contrats', '/manager/paiements'] as $url) {
             $this->asManager()->get($url)->assertSee(route('manager.livreurs.photo', $contrat->livreur_id), false);
         }
@@ -855,7 +862,14 @@ class LocationVenteTest extends TestCase
             ->assertSee('En cours')
             ->assertSee('du 20/10/2026 au 02/11/2026')
             ->assertSee('Moteur')
-            ->assertSee($contrat->reference);
+            ->assertSee($contrat->reference)
+            ->assertDontSee('Déclarer en panne')
+            ->assertDontSee('Remettre en service')
+            ->assertDontSee('En service');
+
+        $this->asManager()->get(route('manager.motos.show', $moto))
+            ->assertOk()
+            ->assertSee('Remettre en service');
 
         $this->asManager()->get(route('manager.contrats.show', $contrat))
             ->assertSee('Les paiements sont suspendus du 20/10/2026 au 02/11/2026')
