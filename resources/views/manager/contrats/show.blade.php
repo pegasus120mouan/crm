@@ -11,6 +11,7 @@
     $libellesEcheance = [
       'payee' => ['Payée', 'success'],
       'partielle' => ['Partiellement payée', 'info'],
+      'en_attente' => ['En attente', 'warning'],
       'en_retard' => ['En retard', 'danger'],
       'a_venir' => ['À venir', 'secondary'],
       'suspendue' => ['Suspendue', 'warning'],

@@ -439,7 +439,10 @@ class Contrat extends Model
             return 0;
         }
 
-        return max(0, $this->montantAttendu($date) - $this->montantPaye());
+        // Les échéances du jour sont « en attente » : le retard ne compte que les jours passés.
+        $limite = Carbon::parse($date ?? Carbon::today())->startOfDay()->subDay();
+
+        return max(0, $this->montantAttendu($limite) - $this->montantPaye());
     }
 
     public function echeancesEnRetard(?CarbonInterface $date = null): int
@@ -616,8 +619,9 @@ class Contrat extends Model
                 $paye >= $cumul => 'payee',
                 $this->statut === self::STATUT_RESILIE => 'annulee',
                 $effective === null => 'suspendue',
-                $paye > $cumulPrecedent && $date->gt($aujourdhui) => 'partielle',
-                $date->lte($aujourdhui) => 'en_retard',
+                $paye > $cumulPrecedent && $date->gte($aujourdhui) => 'partielle',
+                $date->lt($aujourdhui) => 'en_retard',
+                $date->equalTo($aujourdhui) => 'en_attente',
                 default => 'a_venir',
             };
 

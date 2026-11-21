@@ -694,15 +694,17 @@ class LocationVenteTest extends TestCase
         $contrat->paiements()->create(['montant' => 3000, 'date_paiement' => '2026-09-25', 'mode' => 'Espèces']);
 
         // Du jeudi 24/09 au samedi 03/10 : 10 jours dont un dimanche (27/09) => 9 échéances échues.
+        // L'échéance du jour (03/10) est « en attente », pas encore en retard.
         $this->assertSame(9, $contrat->echeancesEchues());
         $this->assertSame(9000, $contrat->montantAttendu());
-        $this->assertSame(6000, $contrat->retard());
-        $this->assertSame(6, $contrat->echeancesEnRetard());
+        $this->assertSame(5000, $contrat->retard());
+        $this->assertSame(5, $contrat->echeancesEnRetard());
         $this->assertSame('2026-09-28', $contrat->prochaineEcheance()->toDateString());
 
         $statuts = array_count_values(array_column($contrat->echeancier(), 'statut'));
         $this->assertSame(3, $statuts['payee']);
-        $this->assertSame(6, $statuts['en_retard']);
+        $this->assertSame(5, $statuts['en_retard']);
+        $this->assertSame(1, $statuts['en_attente']);
         $this->assertSame(41, $statuts['a_venir']);
     }
 
