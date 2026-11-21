@@ -57,8 +57,19 @@
                   {{ $gerant->statut ? 'Actif' : 'Inactif' }}
                 </span>
               </td>
-              <td class="text-end">
+              <td class="text-nowrap text-end">
                 <a href="{{ route('manager.gerants.show', $gerant) }}" class="btn btn-sm btn-outline-primary">Ouvrir</a>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-icon btn-outline-danger"
+                  title="Supprimer"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalConfirmation"
+                  data-confirm-titre="Supprimer un gérant"
+                  data-confirm-texte="Supprimer {{ $gerant->nomComplet() }} ({{ $gerant->code }}) ? Impossible s'il a encore des motos confiées."
+                  data-confirm-url="{{ route('manager.gerants.destroy', $gerant) }}">
+                  <i class="icon-base bx bx-trash"></i>
+                </button>
               </td>
             </tr>
           @empty

@@ -984,6 +984,43 @@ class LocationVenteTest extends TestCase
         $this->assertNull($moto->fresh()->gerant_id);
     }
 
+    public function test_a_manager_can_be_deleted_from_the_list_when_no_motorcycle_is_entrusted(): void
+    {
+        $this->asManager()->post(route('manager.gerants.store'), [
+            'nom' => 'Bamba',
+            'prenoms' => 'Mohamed',
+            'contact' => '0544168297',
+            'statut' => 1,
+            'photo' => UploadedFile::fake()->image('gerant.jpg', 200, 200),
+        ])->assertRedirect();
+
+        $gerant = Gerant::query()->firstOrFail();
+        $moto = Moto::create([
+            'marque' => 'TVS',
+            'modele' => 'HLX',
+            'immatriculation' => 'ZZ 2222 CI',
+            'statut' => Moto::STATUT_CHEZ_GERANT,
+            'gerant_id' => $gerant->id,
+        ]);
+
+        $this->asManager()
+            ->from(route('manager.gerants.index'))
+            ->delete(route('manager.gerants.destroy', $gerant))
+            ->assertRedirect(route('manager.gerants.index'))
+            ->assertSessionHasErrors('gerant');
+
+        $this->assertTrue(Gerant::query()->whereKey($gerant->id)->exists());
+
+        $moto->update(['statut' => Moto::STATUT_DISPONIBLE, 'gerant_id' => null]);
+
+        $this->asManager()
+            ->delete(route('manager.gerants.destroy', $gerant))
+            ->assertRedirect(route('manager.gerants.index'))
+            ->assertSessionHas('success');
+
+        $this->assertFalse(Gerant::query()->whereKey($gerant->id)->exists());
+    }
+
     public function test_the_start_date_of_an_open_breakdown_can_be_updated(): void
     {
         Carbon::setTestNow('2026-10-30 10:00:00');

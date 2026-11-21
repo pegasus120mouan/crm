@@ -11,11 +11,16 @@
       <h4 class="mb-1 mt-1">{{ $gerant->nomComplet() }} <span class="badge bg-label-{{ $gerant->statut ? 'success' : 'secondary' }}">{{ $gerant->code }}</span></h4>
       <p class="text-muted mb-0">{{ $gerant->contact ?: 'Sans contact' }}</p>
     </div>
-    <form action="{{ route('manager.gerants.destroy', $gerant) }}" method="POST" onsubmit="return confirm('Supprimer ce gérant ?');">
-      @csrf
-      @method('DELETE')
-      <button type="submit" class="btn btn-outline-danger">Supprimer</button>
-    </form>
+    <button
+      type="button"
+      class="btn btn-outline-danger"
+      data-bs-toggle="modal"
+      data-bs-target="#modalConfirmation"
+      data-confirm-titre="Supprimer un gérant"
+      data-confirm-texte="Supprimer {{ $gerant->nomComplet() }} ({{ $gerant->code }}) ? Impossible s'il a encore des motos confiées."
+      data-confirm-url="{{ route('manager.gerants.destroy', $gerant) }}">
+      <i class="icon-base bx bx-trash me-1"></i> Supprimer
+    </button>
   </div>
 
   <div class="row">
