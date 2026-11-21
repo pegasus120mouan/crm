@@ -12,6 +12,7 @@ use App\Models\LocationVente\Moto;
 use App\Models\LocationVente\MotoDocument;
 use App\Models\LocationVente\MotoPhoto;
 use App\Models\LocationVente\Paiement;
+use App\Models\LocationVente\TypeMoto;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -44,7 +45,7 @@ class MotoController extends Controller
         $filtres['statut'] = $statut;
 
         $motos = Moto::query()
-            ->with(['contratActuel.livreur', 'contratEnCours.livreur', 'immobilisationEnCours', 'gerant', 'photos', 'documents'])
+            ->with(['contratActuel.livreur', 'contratEnCours.livreur', 'immobilisationEnCours', 'gerant', 'typeMoto', 'photos', 'documents'])
             ->withSum('depenses', 'montant')
             ->withSum('paiements', 'montant')
             ->when($modele !== '', fn ($query) => $query->where('modele', 'like', $this->contient($modele)))
@@ -78,15 +79,16 @@ class MotoController extends Controller
         ];
 
         $livreursDisponibles = Livreur::query()->peuventRecevoirUneMoto()->get();
-        $motosDisponibles = Moto::query()->disponibles()->get();
+        $motosDisponibles = Moto::query()->disponibles()->with('typeMoto')->withSum('depenses', 'montant')->get();
         $gerantsActifs = Gerant::query()->where('statut', true)->orderBy('nom')->orderBy('prenoms')->get();
+        $typesMoto = TypeMoto::query()->orderBy('nom')->get();
         $livreursRecherche = Livreur::query()
             ->whereHas('contrats', fn ($contrat) => $contrat->whereIn('statut', [Contrat::STATUT_EN_COURS, Contrat::STATUT_SOLDE]))
             ->orderBy('nom')
             ->orderBy('prenoms')
             ->get();
 
-        return view('manager.motos.index', compact('motos', 'stats', 'statut', 'filtres', 'livreursDisponibles', 'motosDisponibles', 'gerantsActifs', 'livreursRecherche'));
+        return view('manager.motos.index', compact('motos', 'stats', 'statut', 'filtres', 'livreursDisponibles', 'motosDisponibles', 'gerantsActifs', 'livreursRecherche', 'typesMoto'));
     }
 
     private function contient(string $valeur): string
@@ -524,6 +526,7 @@ class MotoController extends Controller
         $validated = $request->validate([
             'marque' => ['required', 'string', 'max:100'],
             'modele' => ['nullable', 'string', 'max:100'],
+            'type_moto_id' => ['nullable', 'integer', Rule::exists('location_vente_types_moto', 'id')],
             'immatriculation' => ['nullable', 'string', 'max:50', Rule::unique('location_vente_motos', 'immatriculation')->ignore($moto?->id)],
             'numero_chassis' => ['nullable', 'required_without:immatriculation', 'string', 'max:100', Rule::unique('location_vente_motos', 'numero_chassis')->ignore($moto?->id)],
             'couleur' => ['nullable', 'string', 'max:50'],

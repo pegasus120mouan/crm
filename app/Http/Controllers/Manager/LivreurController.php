@@ -70,7 +70,7 @@ class LivreurController extends Controller
             'manquants' => $livreur->elementsKycManquants(),
             'peutRecevoirUneMoto' => $peutRecevoirUneMoto,
             'livreursDisponibles' => $peutRecevoirUneMoto ? collect([$livreur]) : collect(),
-            'motosDisponibles' => $peutRecevoirUneMoto ? Moto::query()->disponibles()->get() : collect(),
+            'motosDisponibles' => $peutRecevoirUneMoto ? Moto::query()->disponibles()->with('typeMoto')->withSum('depenses', 'montant')->get() : collect(),
         ]);
     }
 

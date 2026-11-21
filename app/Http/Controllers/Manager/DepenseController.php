@@ -131,10 +131,36 @@ class DepenseController extends Controller
             }
 
             if ($contrat) {
-                $contrat->retirerDepense((int) $depense->montant);
+                $contrat->loadMissing('moto.typeMoto');
+                $selonLeType = $contrat->moto?->coutAcquisitionDuType() !== null || $contrat->moto?->margeDuType() !== null;
+
+                if ($selonLeType) {
+                    $acquisition = $contrat->moto->coutAcquisitionDuType() ?? (int) $contrat->prix_achat;
+                    $marge = $contrat->moto->margeDuType() ?? (int) $contrat->marge;
+                    $depensesApres = (int) $contrat->moto->depenses()->sum('montant') - (int) $depense->montant;
+                    $total = $acquisition + $marge + max(0, $depensesApres);
+
+                    if ($total < $contrat->montantPaye()) {
+                        throw ValidationException::withMessages([
+                            'montant' => 'Retirer cette dépense rendrait le total inférieur aux '.number_format($contrat->montantPaye(), 0, ',', ' ').' FCFA déjà encaissés.',
+                        ]);
+                    }
+                } else {
+                    $contrat->retirerDepense((int) $depense->montant);
+                }
             }
 
             $depense->delete();
+
+            if ($contrat) {
+                if ($contrat->moto?->coutAcquisitionDuType() !== null || $contrat->moto?->margeDuType() !== null) {
+                    $contrat->alignerSurLeType();
+                } else {
+                    $contrat->update([
+                        'cout_supplementaire' => (int) $contrat->moto->depenses()->sum('montant'),
+                    ]);
+                }
+            }
         });
 
         return back()->with('success', 'Dépense annulée. Le montant à rembourser a été recalculé.');

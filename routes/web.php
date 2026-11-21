@@ -46,6 +46,11 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::put('/gerants/{gerant}', [Manager\GerantController::class, 'update'])->name('gerants.update');
     Route::delete('/gerants/{gerant}', [Manager\GerantController::class, 'destroy'])->name('gerants.destroy');
 
+    Route::get('/types-moto', [Manager\TypeMotoController::class, 'index'])->name('types-moto.index');
+    Route::post('/types-moto', [Manager\TypeMotoController::class, 'store'])->name('types-moto.store');
+    Route::put('/types-moto/{typeMoto}', [Manager\TypeMotoController::class, 'update'])->name('types-moto.update');
+    Route::delete('/types-moto/{typeMoto}', [Manager\TypeMotoController::class, 'destroy'])->name('types-moto.destroy');
+
     Route::get('/motos', [Manager\MotoController::class, 'index'])->name('motos.index');
     Route::post('/motos', [Manager\MotoController::class, 'store'])->name('motos.store');
     Route::get('/motos/{moto}/photos/{face}', [Manager\MotoController::class, 'photo'])

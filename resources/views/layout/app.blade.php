@@ -80,6 +80,12 @@
                 <div class="text-truncate">Liste des motos</div>
               </a>
             </li>
+            <li class="menu-item {{ request()->routeIs('manager.types-moto.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.types-moto.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-category"></i>
+                <div class="text-truncate">Type de moto</div>
+              </a>
+            </li>
             <li class="menu-item {{ request()->routeIs('manager.depenses.*') ? 'active' : '' }}">
               <a href="{{ route('manager.depenses.index') }}" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-wrench"></i>

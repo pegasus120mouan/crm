@@ -53,6 +53,7 @@ class Moto extends Model
     protected $fillable = [
         'marque',
         'modele',
+        'type_moto_id',
         'immatriculation',
         'numero_chassis',
         'couleur',
@@ -202,6 +203,32 @@ class Moto extends Model
     public function gerant(): BelongsTo
     {
         return $this->belongsTo(Gerant::class, 'gerant_id');
+    }
+
+    public function typeMoto(): BelongsTo
+    {
+        return $this->belongsTo(TypeMoto::class, 'type_moto_id');
+    }
+
+    public function coutAcquisitionDuType(): ?int
+    {
+        $cout = $this->typeMoto?->cout_acquisition;
+
+        return $cout !== null && (int) $cout > 0 ? (int) $cout : null;
+    }
+
+    public function margeDuType(): ?int
+    {
+        $marge = $this->typeMoto?->marge;
+
+        return $marge === null ? null : (int) $marge;
+    }
+
+    public function montantJournalierDuType(): ?int
+    {
+        $montant = $this->typeMoto?->montant_journalier;
+
+        return $montant !== null && (int) $montant > 0 ? (int) $montant : null;
     }
 
     public function paiementsGerant(): HasMany

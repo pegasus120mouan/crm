@@ -11,6 +11,7 @@ use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
 use App\Models\LocationVente\MotoPhoto;
 use App\Models\LocationVente\Paiement;
+use App\Models\LocationVente\TypeMoto;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
@@ -52,6 +53,10 @@ class LocationVenteTest extends TestCase
             'database/migrations/2026_11_18_000009_create_location_vente_depenses_table.php',
             'database/migrations/2026_11_21_000010_create_location_vente_gerants_table.php',
             'database/migrations/2026_11_21_000011_add_photo_to_location_vente_gerants_table.php',
+            'database/migrations/2026_11_21_000012_create_location_vente_types_moto_table.php',
+            'database/migrations/2026_11_21_000013_add_marge_to_location_vente_types_moto_table.php',
+            'database/migrations/2026_11_21_000014_add_cout_acquisition_to_location_vente_types_moto_table.php',
+            'database/migrations/2026_11_21_000015_add_montant_journalier_to_location_vente_types_moto_table.php',
         ]]);
     }
 
@@ -343,14 +348,14 @@ class LocationVenteTest extends TestCase
         $contrat = Contrat::firstOrFail();
 
         $this->assertSame('LV-2026-0001', $contrat->reference);
-        $this->assertSame(600000, $contrat->prix_total);
-        $this->assertSame([450000, 50000, 100000], [$contrat->prix_achat, $contrat->cout_supplementaire, $contrat->marge]);
+        $this->assertSame(550000, $contrat->prix_total);
+        $this->assertSame([450000, 0, 100000], [$contrat->prix_achat, $contrat->cout_supplementaire, $contrat->marge]);
         $this->assertSame(Contrat::STATUT_EN_COURS, $contrat->statut);
         $this->assertSame(Moto::STATUT_EN_LOCATION, $moto->fresh()->statut);
         $this->assertSame(100000, $contrat->montantPaye());
-        $this->assertSame(500000, $contrat->reste());
-        $this->assertSame(100, $contrat->nombreEcheances());
-        $this->assertSame('2027-01-26', $contrat->dateFinPrevue()->toDateString());
+        $this->assertSame(450000, $contrat->reste());
+        $this->assertSame(90, $contrat->nombreEcheances());
+        $this->assertSame(Contrat::dateFinPourNombre('2026-10-01', 'journalier', 90)->toDateString(), $contrat->dateFinPrevue()->toDateString());
         $this->assertDatabaseHas('location_vente_paiements', ['contrat_id' => $contrat->id, 'type' => Paiement::TYPE_APPORT, 'montant' => 100000]);
     }
 
@@ -542,67 +547,150 @@ class LocationVenteTest extends TestCase
         ])->assertRedirect(route('manager.contrats.show', $contrat));
 
         $contrat->refresh()->load('moto');
+        $conditions = Contrat::conditionsDepuisTotal('2026-10-15', 'hebdomadaire', 0, 24000, 380000);
         $this->assertSame(380000, $contrat->moto->prix_achat);
         $this->assertSame(380000, $contrat->prix_achat);
-        $this->assertSame(100000, $contrat->cout_supplementaire);
+        $this->assertSame(0, $contrat->cout_supplementaire);
         $this->assertSame(24000, $contrat->montant_echeance);
         $this->assertSame(4000, $contrat->montantAVerser());
-        $this->assertSame(26, $contrat->nombreEcheances());
-        $this->assertSame(624000, $contrat->prix_total);
-        $this->assertSame(144000, $contrat->marge);
+        $this->assertSame($conditions['nombre'], $contrat->nombreEcheances());
+        $this->assertSame(380000, $contrat->prix_total);
+        $this->assertSame(0, $contrat->marge);
         $this->assertSame('hebdomadaire', $contrat->frequence);
         $this->assertSame('2026-10-15', $contrat->date_debut->toDateString());
-        $this->assertSame(6, $contrat->duree_mois);
-        $this->assertSame('2027-04-15', $contrat->date_fin->toDateString());
-        $this->assertSame(244000, $contrat->notreMarge());
+        $this->assertSame($conditions['duree_mois'], $contrat->duree_mois);
+        $this->assertSame($conditions['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+        $this->assertSame(0, $contrat->notreMarge());
     }
 
-    public function test_editing_the_total_to_repay_resizes_the_schedule_and_end_date(): void
+    public function test_the_repayment_total_follows_acquisition_margin_and_expenses(): void
     {
-        $contrat = $this->contrat([
-            'date_debut' => '2026-10-15',
-            'prix_total' => 624000,
-            'montant_echeance' => 24000,
-            'apport' => 0,
-            'frequence' => 'hebdomadaire',
-            'duree_mois' => 6,
-            'date_fin' => '2027-04-15',
+        $type = TypeMoto::query()->create([
+            'nom' => 'ALOB A',
+            'cout_acquisition' => 600000,
+            'marge' => 250000,
         ]);
-        $contrat->moto->update(['prix_achat' => 380000]);
-
-        $this->asManager()->put(route('manager.contrats.update', $contrat), [
-            'prix_acquisition' => 380000,
-            'cout_supplementaire' => 0,
+        $contrat = $this->contrat([
+            'date_debut' => '2026-11-17',
+            'prix_total' => 100000,
+            'montant_echeance' => 6000,
             'apport' => 0,
-            'montant_a_verser' => 4000,
-            'frequence' => 'hebdomadaire',
-            'date_debut' => '2026-10-15',
+            'frequence' => 'journalier',
             'duree_mois' => 6,
-            'prix_total' => 720000,
+        ]);
+        $contrat->moto->update(['type_moto_id' => $type->id, 'prix_achat' => 1000]);
+        Depense::query()->create([
+            'moto_id' => $contrat->moto_id,
+            'contrat_id' => $contrat->id,
+            'date_depense' => '2026-11-18',
+            'montant' => 44000,
+            'libelle' => 'Réparation',
+        ]);
+
+        $this->asManager()->get(route('manager.contrats.show', $contrat))
+            ->assertOk()
+            ->assertSee('Dépenses enregistrées sur la moto.', false)
+            ->assertSee('Calculée automatiquement.', false)
+            ->assertSee('894 000');
+
+        $conditions = Contrat::conditionsDepuisTotal('2026-11-17', 'journalier', 0, 6000, 894000);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 1,
+            'cout_supplementaire' => 0,
+            'apport' => 0,
+            'montant_a_verser' => 6000,
+            'frequence' => 'journalier',
+            'date_debut' => '2026-11-17',
+            'duree_mois' => 1,
+            'prix_total' => 1,
         ])->assertRedirect(route('manager.contrats.show', $contrat));
 
         $contrat->refresh();
-        $this->assertSame(720000, $contrat->prix_total);
-        $this->assertSame(30, $contrat->nombreEcheances());
-        $this->assertSame('2027-05-13', $contrat->date_fin->toDateString());
-        $this->assertSame(7, $contrat->duree_mois);
+        $this->assertSame(894000, $contrat->prix_total);
+        $this->assertSame(44000, $contrat->cout_supplementaire);
+        $this->assertSame(600000, $contrat->prix_achat);
+        $this->assertSame(250000, $contrat->marge);
+        $this->assertSame($conditions['nombre'], $contrat->nombreEcheances());
+        $this->assertSame($conditions['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+        $this->assertSame($conditions['duree_mois'], $contrat->duree_mois);
+
+        $plusLong = Contrat::conditionsDepuisTotal('2026-11-17', 'journalier', 0, 4000, 894000);
 
         $this->asManager()->put(route('manager.contrats.update', $contrat), [
-            'prix_acquisition' => 380000,
+            'prix_acquisition' => 600000,
             'cout_supplementaire' => 0,
             'apport' => 0,
             'montant_a_verser' => 4000,
-            'frequence' => 'hebdomadaire',
-            'date_debut' => '2026-10-15',
-            'duree_mois' => 7,
-            'prix_total' => 480000,
+            'frequence' => 'journalier',
+            'date_debut' => '2026-11-17',
         ])->assertRedirect(route('manager.contrats.show', $contrat));
 
         $contrat->refresh();
-        $this->assertSame(480000, $contrat->prix_total);
-        $this->assertSame(20, $contrat->nombreEcheances());
-        $this->assertSame('2027-03-04', $contrat->date_fin->toDateString());
-        $this->assertSame(5, $contrat->duree_mois);
+        $this->assertSame(894000, $contrat->prix_total);
+        $this->assertSame($plusLong['nombre'], $contrat->nombreEcheances());
+        $this->assertSame($plusLong['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+        $this->assertSame($plusLong['duree_mois'], $contrat->duree_mois);
+        $this->assertNotSame($conditions['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+    }
+
+    public function test_opening_a_contract_realigns_a_stale_schedule_on_the_moto_type(): void
+    {
+        $type = TypeMoto::query()->create([
+            'nom' => 'KTM',
+            'cout_acquisition' => 200000,
+            'marge' => 200000,
+            'montant_journalier' => 4000,
+        ]);
+        $contrat = $this->contrat([
+            'date_debut' => '2026-11-06',
+            'prix_total' => 768000,
+            'montant_echeance' => 24000,
+            'frequence' => 'hebdomadaire',
+            'apport' => 0,
+            'duree_mois' => 8,
+            'date_fin' => '2027-07-01',
+        ]);
+        $contrat->moto->update(['type_moto_id' => $type->id]);
+        Depense::query()->create([
+            'moto_id' => $contrat->moto_id,
+            'contrat_id' => $contrat->id,
+            'date_depense' => '2026-11-10',
+            'montant' => 35000,
+            'libelle' => 'Pneu',
+        ]);
+
+        $this->assertSame(32, $contrat->nombreEcheances());
+
+        $this->asManager()->get(route('manager.contrats.show', $contrat))
+            ->assertOk()
+            ->assertSee('champ-auto', false)
+            ->assertSee('value="4000"', false)
+            ->assertSee('Selon le type KTM', false);
+
+        $contrat->refresh();
+        $conditions = Contrat::conditionsDepuisTotal('2026-11-06', 'hebdomadaire', 0, 24000, 435000);
+        $this->assertSame(435000, $contrat->prix_total);
+        $this->assertSame(24000, $contrat->montant_echeance);
+        $this->assertSame(35000, $contrat->cout_supplementaire);
+        $this->assertSame(200000, $contrat->prix_achat);
+        $this->assertSame(200000, $contrat->marge);
+        $this->assertSame($conditions['nombre'], $contrat->nombreEcheances());
+        $this->assertSame($conditions['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+        $this->assertSame($conditions['duree_mois'], $contrat->duree_mois);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 1,
+            'cout_supplementaire' => 0,
+            'apport' => 0,
+            'montant_a_verser' => 9999,
+            'frequence' => 'hebdomadaire',
+            'date_debut' => '2026-11-06',
+        ])->assertRedirect(route('manager.contrats.show', $contrat));
+
+        $contrat->refresh();
+        $this->assertSame(24000, $contrat->montant_echeance);
+        $this->assertSame(435000, $contrat->prix_total);
     }
 
     public function test_total_to_repay_cannot_be_lower_than_amount_already_paid(): void
@@ -646,10 +734,13 @@ class LocationVenteTest extends TestCase
         ])->assertRedirect(route('manager.contrats.show', $contrat));
 
         $contrat->refresh()->load('moto');
+        $conditions = Contrat::conditionsDepuisTotal('2026-10-15', 'journalier', 0, 4000, 380000);
         $this->assertSame(4000, $contrat->montant_echeance);
-        $this->assertSame($nombre, $contrat->nombreEcheances());
-        $this->assertSame(4000 * $nombre, $contrat->prix_total);
-        $this->assertSame((4000 * $nombre) - 380000, $contrat->notreMarge());
+        $this->assertSame($conditions['nombre'], $contrat->nombreEcheances());
+        $this->assertSame(380000, $contrat->prix_total);
+        $this->assertSame($conditions['duree_mois'], $contrat->duree_mois);
+        $this->assertSame($conditions['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+        $this->assertSame(0, $contrat->notreMarge());
     }
 
     public function test_contract_total_cannot_be_lower_than_amount_already_paid(): void
@@ -667,7 +758,7 @@ class LocationVenteTest extends TestCase
                 'date_debut' => '2026-10-01',
                 'duree_mois' => 1,
             ])
-            ->assertSessionHasErrors('montant_a_verser');
+            ->assertSessionHasErrors('prix_total');
 
         $this->assertSame(100000, $contrat->fresh()->prix_total);
     }
@@ -1087,6 +1178,7 @@ class LocationVenteTest extends TestCase
 
         $contrat->refresh();
         $this->assertSame(115000, $contrat->prix_total);
+        $this->assertSame(15000, $contrat->cout_supplementaire);
         $this->assertSame(12, $contrat->nombreEcheances());
         $this->assertSame('2026-12-24', $contrat->date_fin->toDateString());
         $this->assertSame($marge, $contrat->fresh()->load('moto')->notreMarge());
@@ -1232,6 +1324,187 @@ class LocationVenteTest extends TestCase
             ->assertDontSee('ecart-perte', false);
     }
 
+    public function test_a_margin_can_be_defined_for_a_moto_type(): void
+    {
+        $this->asManager()->post(route('manager.types-moto.store'), [
+            'nom' => 'Scooter 125',
+            'cout_acquisition' => '100 000',
+            'marge' => '200 000',
+            'montant_journalier' => '4 000',
+        ])->assertRedirect(route('manager.types-moto.index'))
+            ->assertSessionHas('success');
+
+        $type = TypeMoto::query()->where('nom', 'Scooter 125')->firstOrFail();
+        $this->assertSame(200000, $type->marge);
+
+        $this->asManager()->get(route('manager.types-moto.index'))
+            ->assertOk()
+            ->assertSee('Scooter 125')
+            ->assertSee('200 000')
+            ->assertDontSee('text-truncate">Marge', false);
+
+        $this->asManager()->put(route('manager.types-moto.update', $type), [
+            'nom' => 'Scooter 125',
+            'cout_acquisition' => '100 000',
+            'marge' => '150 000',
+            'montant_journalier' => '4 000',
+        ])->assertRedirect(route('manager.types-moto.index'));
+
+        $this->assertSame(150000, $type->fresh()->marge);
+    }
+
+    public function test_moto_types_can_be_added_and_chosen_on_a_moto(): void
+    {
+        $this->asManager()->post(route('manager.types-moto.store'), [
+            'nom' => 'Scooter 125',
+            'cout_acquisition' => '420 000',
+            'marge' => '80 000',
+            'montant_journalier' => '4 000',
+        ])->assertRedirect(route('manager.types-moto.index'))
+            ->assertSessionHas('success');
+
+        $type = TypeMoto::query()->where('nom', 'Scooter 125')->firstOrFail();
+        $this->assertSame(420000, $type->cout_acquisition);
+        $this->assertSame(80000, $type->marge);
+        $this->assertSame(4000, $type->montant_journalier);
+
+        $this->asManager()->post(route('manager.types-moto.store'), [
+            'nom' => 'KTM',
+            'cout_acquisition' => '500 000',
+        ])->assertSessionHasErrors('marge');
+
+        $this->asManager()->post(route('manager.types-moto.store'), [
+            'nom' => ' scooter 125 ',
+        ])->assertSessionHasErrors('nom');
+
+        $this->asManager()->get(route('manager.types-moto.index'))
+            ->assertOk()
+            ->assertSee('Type de moto')
+            ->assertSee('Enregistrer un type', false)
+            ->assertSee('Total types', false)
+            ->assertSee('id="modalTypeMoto"', false)
+            ->assertSee('Montant journalier', false)
+            ->assertSee('Scooter 125')
+            ->assertSee('420 000')
+            ->assertSee('80 000')
+            ->assertSee('4 000')
+            ->assertSee(route('manager.types-moto.index'), false);
+
+        $this->asManager()->put(route('manager.types-moto.update', $type), [
+            'nom' => 'Tricycle',
+        ])->assertRedirect(route('manager.types-moto.index'));
+
+        $type->refresh();
+        $this->assertSame('Tricycle', $type->nom);
+        $this->assertSame(420000, $type->cout_acquisition);
+        $this->assertSame(80000, $type->marge);
+        $this->assertSame(4000, $type->montant_journalier);
+
+        $this->asManager()->put(route('manager.types-moto.update', $type), [
+            'nom' => 'Tricycle',
+            'cout_acquisition' => '450 000',
+            'marge' => '90 000',
+            'montant_journalier' => '5 000',
+        ])->assertRedirect(route('manager.types-moto.index'));
+
+        $type->refresh();
+        $this->assertSame(450000, $type->cout_acquisition);
+        $this->assertSame(90000, $type->marge);
+        $this->assertSame(5000, $type->montant_journalier);
+
+        $moto = Moto::create([
+            'marque' => 'TVS',
+            'modele' => 'King',
+            'immatriculation' => 'EF 4567 CI',
+            'statut' => Moto::STATUT_DISPONIBLE,
+            'type_moto_id' => $type->id,
+        ]);
+
+        $this->asManager()->get(route('manager.motos.index'))
+            ->assertOk()
+            ->assertSee('Tricycle')
+            ->assertSee('value="'.$type->id.'"', false);
+
+        $this->asManager()->get(route('manager.types-moto.index'))
+            ->assertOk()
+            ->assertSee('card-title mb-0">1', false);
+
+        $this->asManager()->delete(route('manager.types-moto.destroy', $type))
+            ->assertSessionHasErrors('nom');
+        $this->assertTrue(TypeMoto::query()->whereKey($type->id)->exists());
+
+        $moto->update(['type_moto_id' => null]);
+
+        $this->asManager()->delete(route('manager.types-moto.destroy', $type))
+            ->assertRedirect(route('manager.types-moto.index'))
+            ->assertSessionHas('success');
+        $this->assertFalse(TypeMoto::query()->whereKey($type->id)->exists());
+    }
+
+    public function test_a_contract_takes_the_acquisition_cost_and_margin_from_the_moto_type(): void
+    {
+        $type = TypeMoto::query()->create([
+            'nom' => 'Scooter 125',
+            'cout_acquisition' => 420000,
+            'marge' => 80000,
+        ]);
+        [$livreur, $moto] = $this->livreurEtMoto();
+        $moto->update(['type_moto_id' => $type->id, 'prix_achat' => 1000]);
+
+        $this->asManager()->get('/manager/contrats')
+            ->assertOk()
+            ->assertSee('data-prix="420000"', false)
+            ->assertSee('data-marge="80000"', false)
+            ->assertSee('data-type="Scooter 125"', false);
+
+        $this->asManager()->post('/manager/contrats', [
+            'livreur_id' => $livreur->id,
+            'moto_id' => $moto->id,
+            'prix_achat' => 1,
+            'marge' => 1,
+            'cout_supplementaire' => 5000,
+            'apport' => 0,
+            'montant_echeance' => 5000,
+            'frequence' => 'journalier',
+            'date_debut' => '2026-10-01',
+        ])->assertRedirect();
+
+        $contrat = Contrat::query()->firstOrFail();
+        $this->assertSame(420000, $contrat->prix_achat);
+        $this->assertSame(80000, $contrat->marge);
+        $this->assertSame(500000, $contrat->prix_total);
+        $this->assertSame(420000, $moto->fresh()->prix_achat);
+        $this->assertSame(420000, $contrat->fresh()->load('moto.typeMoto')->prixAcquisitionMoto());
+        $this->assertSame(80000, $contrat->fresh()->load('moto.typeMoto')->notreMarge());
+
+        $this->asManager()->get(route('manager.contrats.show', $contrat))
+            ->assertOk()
+            ->assertSee('Selon le type Scooter 125', false)
+            ->assertSee('value="420000"', false)
+            ->assertSee('data-marge-type="80000"', false);
+
+        $this->asManager()->put(route('manager.contrats.update', $contrat), [
+            'prix_acquisition' => 999,
+            'cout_supplementaire' => 0,
+            'apport' => 0,
+            'montant_a_verser' => 5000,
+            'frequence' => 'journalier',
+            'date_debut' => '2026-10-01',
+            'duree_mois' => 6,
+            'prix_total' => 900000,
+        ])->assertRedirect(route('manager.contrats.show', $contrat));
+
+        $contrat->refresh();
+        $conditions = Contrat::conditionsDepuisTotal('2026-10-01', 'journalier', 0, 5000, 500000);
+        $this->assertSame(420000, $contrat->prix_achat);
+        $this->assertSame(80000, $contrat->marge);
+        $this->assertSame(500000, $contrat->prix_total);
+        $this->assertSame($conditions['nombre'], $contrat->nombreEcheances());
+        $this->assertSame($conditions['date_fin']->toDateString(), $contrat->date_fin->toDateString());
+        $this->assertSame($conditions['duree_mois'], $contrat->duree_mois);
+        $this->assertSame(420000, $contrat->moto->fresh()->prix_achat);
+    }
+
     public function test_commercial_cannot_access_location_vente(): void
     {
         $this->withSession(['utilisateur' => ['id' => 2, 'login' => 'pauline', 'role' => 'commercial']])
@@ -1240,6 +1513,10 @@ class LocationVenteTest extends TestCase
 
         $this->withSession(['utilisateur' => ['id' => 2, 'login' => 'pauline', 'role' => 'commercial']])
             ->get(route('manager.depenses.index'))
+            ->assertRedirect(route('dashboard'));
+
+        $this->withSession(['utilisateur' => ['id' => 2, 'login' => 'pauline', 'role' => 'commercial']])
+            ->get(route('manager.types-moto.index'))
             ->assertRedirect(route('dashboard'));
     }
 

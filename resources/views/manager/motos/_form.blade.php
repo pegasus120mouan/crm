@@ -32,6 +32,16 @@
     <input type="text" class="form-control" name="marque" value="{{ $moto->marque ?? old('marque') }}" placeholder="Ex : Haojue, TVS, Yamaha" required>
   </div>
   <div class="col-md-6">
+    <label class="form-label">Type de moto</label>
+    <select class="form-select" name="type_moto_id">
+      <option value="">—</option>
+      @foreach ($typesMoto as $type)
+        <option value="{{ $type->id }}" @selected((string) old('type_moto_id', $moto->type_moto_id ?? '') === (string) $type->id)>{{ $type->nom }}</option>
+      @endforeach
+    </select>
+    <small class="text-muted">Créés dans le menu Type de moto.</small>
+  </div>
+  <div class="col-md-6">
     <label class="form-label">Modèle</label>
     <input type="text" class="form-control" name="modele" value="{{ $moto->modele ?? old('modele') }}">
   </div>

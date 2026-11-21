@@ -159,6 +159,9 @@
                   @endif
                   <div>
                     <div class="fw-medium">{{ trim($moto->marque.' '.$moto->modele) }}</div>
+                    @if ($moto->typeMoto)
+                      <small class="text-primary d-block">{{ $moto->typeMoto->nom }}</small>
+                    @endif
                     <small class="text-muted">{{ $moto->caracteristiques() ?: '—' }}</small>
                   </div>
                 </div>

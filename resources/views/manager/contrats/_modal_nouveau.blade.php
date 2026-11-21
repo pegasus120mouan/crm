@@ -42,7 +42,14 @@
               <select class="form-select" name="moto_id" id="contratMoto" required>
                 <option value="">-- Choisir une moto disponible --</option>
                 @foreach ($motosDisponibles as $moto)
-                  <option value="{{ $moto->id }}" data-prix="{{ $moto->prix_achat }}" @selected(old('moto_id') == $moto->id)>{{ $moto->libelle() }}</option>
+                  <option
+                    value="{{ $moto->id }}"
+                    data-prix="{{ $moto->coutAcquisitionDuType() ?? $moto->prix_achat }}"
+                    @if ($moto->margeDuType() !== null) data-marge="{{ $moto->margeDuType() }}" @endif
+                    @if ($moto->typeMoto) data-type="{{ $moto->typeMoto->nom }}" @endif
+                    @if ($moto->coutAcquisitionDuType() !== null) data-prix-type="1" @endif
+                    data-depenses="{{ (int) $moto->depenses_sum_montant }}"
+                    @selected(old('moto_id') == $moto->id)>{{ $moto->libelle() }}</option>
                 @endforeach
               </select>
               <small class="text-muted">Seules les motos au statut « Disponible ».</small>
@@ -52,18 +59,20 @@
                 <h6 class="mb-3"><i class="icon-base bx bx-calculator me-1"></i> Montant à rembourser par le livreur</h6>
                 <div class="row g-3">
                   <div class="col-md-4">
-                    <label class="form-label" for="contratPrixAchat">Prix d'achat de la moto (FCFA)</label>
+                    <label class="form-label" for="contratPrixAchat">Prix d'acquisition (FCFA)</label>
                     <input type="number" class="form-control js-calcul" name="prix_achat" id="contratPrixAchat" min="0" value="{{ old('prix_achat') }}" required>
+                    <small class="text-muted" id="contratPrixSource">&nbsp;</small>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="contratCout">Coût supplémentaire (FCFA)</label>
-                    <input type="number" class="form-control js-calcul" name="cout_supplementaire" id="contratCout" min="0" value="{{ old('cout_supplementaire', 0) }}">
-                    <small class="text-muted">Immatriculation, assurance, transport...</small>
+                    <input type="number" class="form-control" name="cout_supplementaire" id="contratCout" min="0" value="{{ old('cout_supplementaire', 0) }}" readonly>
+                    <small class="text-muted">Dépenses enregistrées sur la moto.</small>
                   </div>
                   <div class="col-md-4">
                     <label class="form-label" for="contratMarge">Notre marge (FCFA)</label>
                     <input type="number" class="form-control js-calcul" name="marge" id="contratMarge" min="0" value="{{ old('marge', 0) }}">
                     <small class="text-muted" id="contratMargePourcent">&nbsp;</small>
+                    <small class="text-muted d-block" id="contratMargeSource"></small>
                   </div>
                 </div>
                 <div class="d-flex justify-content-between align-items-center border-top mt-3 pt-3">
@@ -148,6 +157,8 @@
     var apercu = document.getElementById('contratApercu');
     var moto = document.getElementById('contratMoto');
     var livreur = document.getElementById('contratLivreur');
+    var prixSource = document.getElementById('contratPrixSource');
+    var margeSource = document.getElementById('contratMargeSource');
     if (!modal || !prixAchat || !apercu) return;
 
     function ajouterMois(iso, mois) {
@@ -232,8 +243,24 @@
 
     function prixDeLaMoto(forcer) {
       var option = moto.options[moto.selectedIndex];
-      if (option && option.dataset.prix && (forcer || !prixAchat.value)) {
+      var type = option ? (option.dataset.type || '') : '';
+      if (option && option.dataset.prix !== undefined && option.dataset.prix !== '' && (forcer || !prixAchat.value)) {
         prixAchat.value = option.dataset.prix;
+      }
+      if (option && option.dataset.marge !== undefined && option.dataset.marge !== '' && (forcer || !marge.value || marge.value === '0')) {
+        marge.value = option.dataset.marge;
+      }
+      prixAchat.readOnly = Boolean(option && option.dataset.prixType === '1');
+      marge.readOnly = Boolean(option && option.dataset.marge !== undefined && option.dataset.marge !== '');
+      if (cout) {
+        cout.value = option && option.dataset.depenses !== undefined ? option.dataset.depenses : '0';
+        cout.readOnly = true;
+      }
+      if (prixSource) {
+        prixSource.textContent = type ? 'Selon le type ' + type + '.' : '\u00a0';
+      }
+      if (margeSource) {
+        margeSource.textContent = marge.readOnly ? 'Selon le type ' + type + '.' : '';
       }
       calculer();
     }
@@ -266,7 +293,11 @@
       }
     });
 
-    calculer();
+    if (moto.value) {
+      prixDeLaMoto(true);
+    } else {
+      calculer();
+    }
 
     @if ($errors->any() && old('_formulaire') === 'nouveau_contrat')
       bootstrap.Modal.getOrCreateInstance(modal).show();

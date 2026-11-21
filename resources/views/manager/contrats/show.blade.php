@@ -8,6 +8,7 @@
     $enCours = $contrat->statut === \App\Models\LocationVente\Contrat::STATUT_EN_COURS;
     $photoMoto = $contrat->moto->photoPrincipale();
     $nombreEcheances = $contrat->nombreEcheances();
+    $depensesMoto = (int) $contrat->moto->depenses()->sum('montant');
     $libellesEcheance = [
       'payee' => ['Payée', 'success'],
       'partielle' => ['Partiellement payée', 'info'],
@@ -141,7 +142,7 @@
             <dt class="col-6 fw-normal text-muted">Prix d'acquisition</dt>
             <dd class="col-6">{{ $fcfa($contrat->prixAcquisitionMoto()) }}</dd>
             <dt class="col-6 fw-normal text-muted">Coût supplémentaire</dt>
-            <dd class="col-6">{{ $fcfa($contrat->cout_supplementaire) }}</dd>
+            <dd class="col-6">{{ $fcfa($depensesMoto) }}</dd>
             <dt class="col-6 fw-medium text-muted">Notre marge</dt>
             <dd class="col-6 fw-medium text-success">
               {{ $fcfa($contrat->notreMarge()) }}
@@ -327,20 +328,33 @@
               $montantAVerserInitial = old('montant_a_verser', $contrat->montantAVerser());
             @endphp
             <p class="text-muted small mb-3">
-              Montant à verser (ex. 4&nbsp;000 / jour) saisi à la main.
-              Le total à rembourser est modifiable : le nombre d'échéances et la date de fin suivent.
-              Changer la durée, la fréquence, l'apport ou le montant à verser recalcule ce total.
+              Le total à rembourser est le coût d'acquisition, plus la marge, plus les dépenses de la moto.
+              La date de fin se calcule selon le montant de chaque échéance.
+              La durée en mois suit automatiquement.
             </p>
+            @php
+              $typeContrat = $contrat->moto->typeMoto;
+              $prixDepuisType = $contrat->moto->coutAcquisitionDuType();
+              $margeDepuisType = $contrat->moto->margeDuType();
+              $journalierType = $contrat->moto->montantJournalierDuType();
+              $acquisitionAffichee = $prixDepuisType ?? (int) old('prix_acquisition', $contrat->prixAcquisitionMoto());
+              $margeCalculee = $margeDepuisType ?? (int) $contrat->marge;
+              $montantAVerserAffiche = $journalierType ?? (int) $montantAVerserInitial;
+              $totalFormule = $acquisitionAffichee + $margeCalculee + $depensesMoto;
+            @endphp
             <div class="row g-3">
               <div class="col-md-6">
                 <label class="form-label" for="editPrixAcquisition">Prix d'acquisition (FCFA)</label>
-                <input type="number" class="form-control js-edit-marge" name="prix_acquisition" id="editPrixAcquisition" min="0"
-                  value="{{ old('prix_acquisition', $contrat->prixAcquisitionMoto()) }}" required>
+                <input type="number" class="form-control {{ $prixDepuisType !== null ? 'champ-auto' : 'js-edit-marge' }}" name="prix_acquisition" id="editPrixAcquisition" min="0"
+                  value="{{ $prixDepuisType ?? old('prix_acquisition', $contrat->prixAcquisitionMoto()) }}" @readonly($prixDepuisType !== null) required>
+                @if ($prixDepuisType !== null)
+                  <small class="text-muted">Selon le type {{ $typeContrat->nom }}.</small>
+                @endif
               </div>
               <div class="col-md-6">
                 <label class="form-label" for="editCout">Coût supplémentaire (FCFA)</label>
-                <input type="number" class="form-control js-edit-marge" name="cout_supplementaire" id="editCout" min="0"
-                  value="{{ old('cout_supplementaire', $contrat->cout_supplementaire) }}">
+                <input type="text" class="form-control champ-auto" id="editCout" value="{{ number_format($depensesMoto, 0, ',', ' ') }}" readonly>
+                <small class="text-muted">Dépenses enregistrées sur la moto.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editApport">Apport initial (FCFA)</label>
@@ -349,9 +363,9 @@
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editMontantAVerser">Montant à verser (FCFA)</label>
-                <input type="number" class="form-control js-edit-calcul" name="montant_a_verser" id="editMontantAVerser" min="1"
-                  value="{{ $montantAVerserInitial }}" required>
-                <small class="text-muted">Saisi manuellement — base journalière.</small>
+                <input type="number" class="form-control {{ $journalierType !== null ? 'champ-auto' : 'js-edit-calcul' }}" name="montant_a_verser" id="editMontantAVerser" min="1"
+                  value="{{ $montantAVerserAffiche }}" @readonly($journalierType !== null) required>
+                <small class="text-muted">{{ $journalierType !== null ? 'Selon le type '.$typeContrat->nom.'.' : 'Base journalière.' }}</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editFrequence">Fréquence</label>
@@ -368,32 +382,32 @@
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editDureeMois">Durée (mois)</label>
-                <input type="number" class="form-control js-edit-calcul" name="duree_mois" id="editDureeMois" min="1" max="120"
-                  value="{{ old('duree_mois', $contrat->duree_mois) }}" placeholder="Ex : 6" required>
+                <input type="text" class="form-control champ-auto" id="editDureeMois" value="" readonly>
+                <small class="text-muted">Calculée automatiquement.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editDateFin">Date de fin</label>
-                <input type="date" class="form-control" id="editDateFin" value="" readonly>
-                <small class="text-muted">Date de la dernière échéance.</small>
+                <input type="date" class="form-control champ-auto" id="editDateFin" value="" readonly>
+                <small class="text-muted">Calculée selon le montant de chaque échéance.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editEcheance">Montant de chaque échéance (FCFA)</label>
-                <input type="text" class="form-control" id="editEcheance" value="" readonly>
-                <small class="text-muted">Journalier = montant ; hebdo = × {{ $joursSemaine }}.</small>
+                <input type="text" class="form-control champ-auto" id="editEcheance" value="" readonly>
+                <small class="text-muted">Calculé automatiquement.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editNombreEcheances">Nombre d'échéances</label>
-                <input type="text" class="form-control" id="editNombreEcheances" value="" readonly>
+                <input type="text" class="form-control champ-auto" id="editNombreEcheances" value="" readonly>
                 <small class="text-muted">Selon le total et le montant de l'échéance.</small>
               </div>
               <div class="col-md-4">
                 <label class="form-label" for="editPrixTotal">Total à rembourser (FCFA)</label>
-                <input type="number" class="form-control" name="prix_total" id="editPrixTotal" min="1" step="1"
-                  value="{{ old('prix_total', $contrat->prix_total) }}" required>
-                <small class="text-muted">Modifiable. Ajuste le nombre d'échéances et la date de fin.</small>
+                <input type="text" class="form-control champ-auto" id="editPrixTotal" value="{{ number_format($totalFormule, 0, ',', ' ') }}" readonly
+                  data-depenses="{{ $depensesMoto }}" data-marge="{{ $margeCalculee }}">
+                <small class="text-muted">Coût d'acquisition + marge + dépenses de la moto.</small>
               </div>
               <div class="col-12">
-                <div class="alert alert-success mb-0 py-2" id="editMargeApercu">Notre marge : —</div>
+                <div class="alert alert-success mb-0 py-2" id="editMargeApercu" @if ($margeDepuisType !== null) data-marge-type="{{ $margeDepuisType }}" data-type-nom="{{ $typeContrat->nom }}" @endif>Notre marge : —</div>
               </div>
             </div>
           </div>
@@ -407,6 +421,12 @@
   </div>
 
   @push('scripts')
+  <style>
+    #formModifierContrat .champ-auto {
+      background-color: #f3f4f6 !important;
+      color: #6c757d;
+    }
+  </style>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var form = document.getElementById('formModifierContrat');
@@ -414,7 +434,6 @@
       if (!form || !modal) return;
 
       var acquisition = document.getElementById('editPrixAcquisition');
-      var cout = document.getElementById('editCout');
       var total = document.getElementById('editPrixTotal');
       var apport = document.getElementById('editApport');
       var montantAVerser = document.getElementById('editMontantAVerser');
@@ -479,66 +498,45 @@
 
       function afficher(e, n, t) {
         var a = parseInt(acquisition.value, 10) || 0;
-        var c = parseInt(cout.value, 10) || 0;
-        var marge = t - a;
+        var c = parseInt(total.dataset.depenses, 10) || 0;
+        var margeType = apercu.dataset.margeType;
+        var marge = margeType !== undefined && margeType !== '' ? parseInt(margeType, 10) : (t - a);
+        var selonType = apercu.dataset.typeNom ? ' <span class="text-muted">· selon le type ' + apercu.dataset.typeNom + '</span>' : '';
         echeance.value = e > 0 ? format(e) : '—';
         nombre.value = n > 0 ? String(n) : '—';
         apercu.className = 'alert ' + (marge >= 0 ? 'alert-success' : 'alert-danger') + ' mb-0 py-2';
         apercu.innerHTML = 'Notre marge : <strong>' + format(marge) + '</strong>' +
           (n > 0 ? ' · ' + format(Math.trunc(marge / n)) + ' / échéance × ' + n : '') +
-          (c > 0 ? ' <span class="text-muted">(dont coût supp. ' + format(c) + ')</span>' : '');
+          selonType +
+          (c > 0 && margeType === undefined ? ' <span class="text-muted">(dont coût supp. ' + format(c) + ')</span>' : '');
       }
 
-      function depuisDuree() {
+      function recalculer() {
         var e = montantEcheance();
         var ap = parseInt(apport.value, 10) || 0;
-        var mois = parseInt(duree.value, 10) || 0;
-        var n = debut.value && mois > 0 ? nombreSurPeriode(debut.value, mois, frequence.value) : 0;
-        var t = ap + (e * n);
-        fin.value = n > 0 && debut.value ? formatIso(dateEcheance(debut.value, frequence.value, n)) : '';
-        total.value = t > 0 ? String(t) : '';
-        afficher(e, n, t);
-      }
-
-      function depuisTotal() {
-        var e = montantEcheance();
-        var ap = parseInt(apport.value, 10) || 0;
-        var t = parseInt(total.value, 10) || 0;
+        var a = parseInt(acquisition.value, 10) || 0;
+        var marge = parseInt(total.dataset.marge, 10) || 0;
+        var depenses = parseInt(total.dataset.depenses, 10) || 0;
+        var t = a + marge + depenses;
         var base = t - ap;
         var n = e > 0 && base > 0 ? Math.ceil(base / e) : 0;
+        total.value = t > 0 ? format(t).replace(' FCFA', '') : '';
         if (debut.value && n > 0) {
           var finIso = formatIso(dateEcheance(debut.value, frequence.value, n));
           fin.value = finIso;
           duree.value = String(moisCouvrant(debut.value, finIso));
         } else {
           fin.value = '';
+          duree.value = '';
         }
         afficher(e, n, t);
       }
 
-      function nombreSurPeriode(debutIso, mois, freq) {
-        var finIso = ajouterMois(debutIso, mois);
-        if (!finIso) return 0;
-        var finDate = parseIso(finIso);
-        var n = 0;
-        for (var i = 1; i <= 10000; i++) {
-          if (dateEcheance(debutIso, freq, i) > finDate) break;
-          n = i;
-        }
-        return n;
-      }
-
-      form.querySelectorAll('.js-edit-calcul').forEach(function (el) {
-        el.addEventListener('input', depuisDuree);
-        el.addEventListener('change', depuisDuree);
+      form.querySelectorAll('.js-edit-calcul, .js-edit-marge').forEach(function (el) {
+        el.addEventListener('input', recalculer);
+        el.addEventListener('change', recalculer);
       });
-      form.querySelectorAll('.js-edit-marge').forEach(function (el) {
-        el.addEventListener('input', depuisTotal);
-        el.addEventListener('change', depuisTotal);
-      });
-      total.addEventListener('input', depuisTotal);
-      total.addEventListener('change', depuisTotal);
-      depuisTotal();
+      recalculer();
 
       @if ($errors->any() && old('_formulaire') === 'modifier_contrat')
         bootstrap.Modal.getOrCreateInstance(modal).show();

@@ -45,6 +45,10 @@ class MotoDocumentTest extends TestCase
             'database/migrations/2026_11_18_000009_create_location_vente_depenses_table.php',
             'database/migrations/2026_11_21_000010_create_location_vente_gerants_table.php',
             'database/migrations/2026_11_21_000011_add_photo_to_location_vente_gerants_table.php',
+            'database/migrations/2026_11_21_000012_create_location_vente_types_moto_table.php',
+            'database/migrations/2026_11_21_000013_add_marge_to_location_vente_types_moto_table.php',
+            'database/migrations/2026_11_21_000014_add_cout_acquisition_to_location_vente_types_moto_table.php',
+            'database/migrations/2026_11_21_000015_add_montant_journalier_to_location_vente_types_moto_table.php',
         ]]);
     }
 

@@ -195,18 +195,24 @@ class Contrat extends Model
         return $nombre;
     }
 
-    /** Prix d'acquisition de la moto (coût parc), distinct du prix de base du contrat. */
+    /** Prix d'acquisition : celui du type de moto lorsqu'il est défini, sinon le coût parc. */
     public function prixAcquisitionMoto(): int
     {
-        return (int) ($this->moto?->prix_achat ?? 0);
+        return $this->moto?->coutAcquisitionDuType() ?? (int) ($this->moto?->prix_achat ?? 0);
     }
 
     /**
-     * Notre marge = total à rembourser − prix d'acquisition.
-     * Répartie ensuite sur le nombre d'échéances.
+     * Notre marge : celle du type de moto lorsqu'elle est définie,
+     * sinon total à rembourser − prix d'acquisition − dépenses.
      */
     public function notreMarge(): int
     {
+        $margeType = $this->moto?->margeDuType();
+
+        if ($margeType !== null) {
+            return $margeType;
+        }
+
         return $this->prix_total - $this->prixAcquisitionMoto() - $this->totalDepenses();
     }
 
@@ -224,11 +230,96 @@ class Contrat extends Model
     }
 
     /**
+     * Aligne le total, la date de fin et la durée sur le type de moto et ses dépenses.
+     */
+    public function alignerSurLeType(): bool
+    {
+        $this->loadMissing('moto.typeMoto');
+        $moto = $this->moto;
+
+        if (! $moto || $this->statut !== self::STATUT_EN_COURS) {
+            return false;
+        }
+
+        $coutType = $moto->coutAcquisitionDuType();
+        $margeType = $moto->margeDuType();
+        $journalier = $moto->montantJournalierDuType();
+
+        if ($coutType === null && $margeType === null && $journalier === null) {
+            return false;
+        }
+
+        $acquisition = $coutType ?? (int) $this->prix_achat;
+        $marge = $margeType ?? (int) $this->marge;
+        $depenses = (int) $moto->depenses()->sum('montant');
+        $prixTotal = $acquisition + $marge + $depenses;
+        $montantEcheance = $journalier !== null
+            ? static::montantEcheanceDepuisVersement($journalier, $this->frequence)
+            : (int) $this->montant_echeance;
+
+        if ($prixTotal < 1 || (int) $this->apport >= $prixTotal || $prixTotal < $this->montantPaye() || $montantEcheance < 1) {
+            return false;
+        }
+
+        $conditions = static::conditionsDepuisTotal(
+            $this->date_debut,
+            $this->frequence,
+            (int) $this->apport,
+            $montantEcheance,
+            $prixTotal
+        );
+
+        if ($conditions['nombre'] < 1 || $conditions['duree_mois'] > 120) {
+            return false;
+        }
+
+        $dateFin = $conditions['date_fin']->toDateString();
+        $dejaAligne = (int) $this->prix_total === $prixTotal
+            && (int) $this->prix_achat === $acquisition
+            && (int) $this->marge === $marge
+            && (int) $this->cout_supplementaire === $depenses
+            && (int) $this->montant_echeance === $montantEcheance
+            && (int) $this->duree_mois === $conditions['duree_mois']
+            && $this->date_fin?->toDateString() === $dateFin;
+
+        if ($dejaAligne) {
+            return false;
+        }
+
+        $moto->update(['prix_achat' => $acquisition]);
+        $this->update([
+            'prix_achat' => $acquisition,
+            'marge' => $marge,
+            'cout_supplementaire' => $depenses,
+            'montant_echeance' => $montantEcheance,
+            'prix_total' => $prixTotal,
+            'duree_mois' => $conditions['duree_mois'],
+            'date_fin' => $dateFin,
+        ]);
+        $this->oublierEcheancier();
+        $this->reporterEcheancesApresImmobilisation();
+        $this->synchroniserStatut();
+
+        return true;
+    }
+
+    /**
      * Ajoute une dépense moto au montant à rembourser et allonge l'échéancier.
      */
     public function integrerDepense(int $montant): void
     {
+        $this->loadMissing('moto.typeMoto');
+
+        if ($this->moto?->coutAcquisitionDuType() !== null || $this->moto?->margeDuType() !== null) {
+            $this->alignerSurLeType();
+
+            return;
+        }
+
         $this->recalculerDepuisTotal($this->prix_total + $montant);
+        $this->update([
+            'cout_supplementaire' => (int) $this->moto->depenses()->sum('montant'),
+        ]);
     }
 
     /**

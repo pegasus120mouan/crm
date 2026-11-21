@@ -48,7 +48,7 @@ class ContratController extends Controller
         ];
 
         $livreursDisponibles = Livreur::query()->peuventRecevoirUneMoto()->get();
-        $motosDisponibles = Moto::query()->disponibles()->get();
+        $motosDisponibles = Moto::query()->disponibles()->with('typeMoto')->withSum('depenses', 'montant')->get();
 
         return view('manager.contrats.index', compact('contrats', 'stats', 'statut', 'livreursDisponibles', 'motosDisponibles'));
     }
@@ -72,6 +72,7 @@ class ContratController extends Controller
         $validated['apport'] = (int) ($validated['apport'] ?? 0);
         $validated['cout_supplementaire'] = (int) ($validated['cout_supplementaire'] ?? 0);
         $validated['marge'] = (int) ($validated['marge'] ?? 0);
+        $this->appliquerValeursDuType($validated);
         $validated['prix_total'] = $validated['prix_achat'] + $validated['cout_supplementaire'] + $validated['marge'];
         $validated['duree_mois'] = isset($validated['duree_mois']) ? (int) $validated['duree_mois'] : null;
         $validated['date_fin'] = $validated['duree_mois']
@@ -119,7 +120,10 @@ class ContratController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
             $contrat->attribuerReference();
-            $moto->update(['statut' => Moto::STATUT_EN_LOCATION]);
+            $moto->update([
+                'statut' => Moto::STATUT_EN_LOCATION,
+                'prix_achat' => $moto->coutAcquisitionDuType() ?? $moto->prix_achat,
+            ]);
 
             if ($validated['apport'] > 0) {
                 $contrat->paiements()->create([
@@ -142,8 +146,13 @@ class ContratController extends Controller
 
     public function show(Contrat $contrat)
     {
+        $contrat->load('moto.typeMoto');
+        $contrat->alignerSurLeType();
+        $contrat->refresh();
+
         $contrat->load([
             'livreur',
+            'moto.typeMoto',
             'moto.photos',
             'immobilisations',
             'depenses',
@@ -165,75 +174,65 @@ class ContratController extends Controller
             'montant_a_verser' => ['required', 'integer', 'min:1'],
             'frequence' => ['required', Rule::in(array_keys(Contrat::FREQUENCES))],
             'date_debut' => ['required', 'date'],
-            'duree_mois' => ['required', 'integer', 'min:1', 'max:120'],
-            'prix_total' => ['nullable', 'integer', 'min:1'],
+            'duree_mois' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'prix_total' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $validated['cout_supplementaire'] = (int) ($validated['cout_supplementaire'] ?? 0);
         $validated['apport'] = (int) ($validated['apport'] ?? 0);
         $validated['prix_acquisition'] = (int) $validated['prix_acquisition'];
+        $contrat->loadMissing('moto.typeMoto');
+        $coutType = $contrat->moto?->coutAcquisitionDuType();
+        if ($coutType !== null) {
+            $validated['prix_acquisition'] = $coutType;
+        }
         $validated['montant_a_verser'] = (int) $validated['montant_a_verser'];
-        $validated['duree_mois'] = (int) $validated['duree_mois'];
+        $journalierType = $contrat->moto?->montantJournalierDuType();
+        if ($journalierType !== null) {
+            $validated['montant_a_verser'] = $journalierType;
+        }
 
         $montantEcheance = Contrat::montantEcheanceDepuisVersement($validated['montant_a_verser'], $validated['frequence']);
-        $prixTotalSaisi = array_key_exists('prix_total', $validated) && $validated['prix_total'] !== null
-            ? (int) $validated['prix_total']
-            : null;
-
-        if ($prixTotalSaisi !== null) {
-            if ($validated['apport'] >= $prixTotalSaisi) {
-                throw ValidationException::withMessages([
-                    'prix_total' => "Le total à rembourser doit être supérieur à l'apport.",
-                ]);
-            }
-
-            $conditions = Contrat::conditionsDepuisTotal(
-                $validated['date_debut'],
-                $validated['frequence'],
-                $validated['apport'],
-                $montantEcheance,
-                $prixTotalSaisi
-            );
-
-            if ($conditions['nombre'] < 1) {
-                throw ValidationException::withMessages([
-                    'prix_total' => 'Le total doit couvrir au moins une échéance.',
-                ]);
-            }
-
-            if ($conditions['duree_mois'] > 120) {
-                throw ValidationException::withMessages([
-                    'prix_total' => 'Ce total implique plus de 120 mois d\'échéances.',
-                ]);
-            }
-
-            $prixTotal = $prixTotalSaisi;
-            $validated['duree_mois'] = $conditions['duree_mois'];
-            $dateFin = $conditions['date_fin'];
-        } else {
-            $nombreEcheances = Contrat::nombreEcheancesSurPeriode(
-                $validated['date_debut'],
-                $validated['duree_mois'],
-                $validated['frequence']
-            );
-            if ($nombreEcheances < 1) {
-                throw ValidationException::withMessages([
-                    'duree_mois' => 'La durée doit couvrir au moins une échéance selon la fréquence choisie.',
-                ]);
-            }
-
-            $prixTotal = $validated['apport'] + ($montantEcheance * $nombreEcheances);
-            $dateFin = Contrat::dateFinDepuisDuree($validated['date_debut'], $validated['duree_mois']);
-        }
+        $marge = $contrat->moto?->margeDuType() ?? (int) $contrat->marge;
+        $depenses = (int) $contrat->moto->depenses()->sum('montant');
+        $validated['cout_supplementaire'] = $depenses;
+        $prixTotal = $validated['prix_acquisition'] + $marge + $depenses;
 
         $dejaPaye = $contrat->montantPaye();
         if ($prixTotal < $dejaPaye) {
-            $champ = $prixTotalSaisi !== null ? 'prix_total' : 'montant_a_verser';
             throw ValidationException::withMessages([
-                $champ => 'Le total à rembourser ('.number_format($prixTotal, 0, ',', ' ').' FCFA) ne peut pas être inférieur aux '.number_format($dejaPaye, 0, ',', ' ').' FCFA déjà encaissés.',
+                'prix_total' => 'Le total à rembourser ('.number_format($prixTotal, 0, ',', ' ').' FCFA) ne peut pas être inférieur aux '.number_format($dejaPaye, 0, ',', ' ').' FCFA déjà encaissés.',
             ]);
         }
-        $marge = $prixTotal - $validated['prix_acquisition'] - $validated['cout_supplementaire'];
+
+        if ($validated['apport'] >= $prixTotal) {
+            throw ValidationException::withMessages([
+                'apport' => "L'apport ne peut pas dépasser le montant à rembourser.",
+            ]);
+        }
+
+        $conditions = Contrat::conditionsDepuisTotal(
+            $validated['date_debut'],
+            $validated['frequence'],
+            $validated['apport'],
+            $montantEcheance,
+            $prixTotal
+        );
+
+        if ($conditions['nombre'] < 1) {
+            throw ValidationException::withMessages([
+                'montant_a_verser' => 'Le montant de chaque échéance doit permettre au moins un versement.',
+            ]);
+        }
+
+        if ($conditions['duree_mois'] > 120) {
+            throw ValidationException::withMessages([
+                'montant_a_verser' => 'Ce montant d\'échéance étend le contrat au-delà de 120 mois.',
+            ]);
+        }
+
+        $validated['duree_mois'] = $conditions['duree_mois'];
+        $dateFin = $conditions['date_fin'];
 
         DB::transaction(function () use ($contrat, $validated, $dateFin, $marge, $prixTotal, $montantEcheance) {
             $contrat->moto()->update(['prix_achat' => $validated['prix_acquisition']]);
@@ -306,6 +305,30 @@ class ContratController extends Controller
         return redirect()
             ->route('manager.contrats.index')
             ->with('success', "Contrat {$reference} supprimé. Les paiements associés sont retirés.");
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function appliquerValeursDuType(array &$validated): void
+    {
+        $moto = Moto::query()->with('typeMoto')->find($validated['moto_id'] ?? null);
+
+        if (! $moto) {
+            return;
+        }
+
+        $cout = $moto->coutAcquisitionDuType();
+        if ($cout !== null) {
+            $validated['prix_achat'] = $cout;
+        }
+
+        $marge = $moto->margeDuType();
+        if ($marge !== null) {
+            $validated['marge'] = $marge;
+        }
+
+        $validated['cout_supplementaire'] = (int) $moto->depenses()->sum('montant');
     }
 
     private function utilisateurConnecteId(): ?int
