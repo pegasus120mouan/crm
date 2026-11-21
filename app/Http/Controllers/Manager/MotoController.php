@@ -121,7 +121,7 @@ class MotoController extends Controller
         $moto->load([
             'photos',
             'documents',
-            'immobilisations',
+            'immobilisations.contrat',
             'depenses' => fn ($query) => $query->with('contrat.livreur')->orderByDesc('date_depense')->orderByDesc('id'),
             'paiements' => fn ($query) => $query->with('contrat.livreur')->orderByDesc('date_paiement')->orderByDesc('location_vente_paiements.id'),
         ]);
@@ -204,6 +204,54 @@ class MotoController extends Controller
             : 'Immobilisation enregistrée. Les échéances de la période sont reportées.';
 
         return back()->with('success', $message);
+    }
+
+    public function modifierPanne(Request $request, Moto $moto)
+    {
+        $panne = $moto->immobilisationEnCours;
+
+        if (! $panne) {
+            return back()->with('error', 'Cette moto n\'a pas d\'immobilisation en cours.');
+        }
+
+        $data = $request->validate([
+            'date_debut' => ['required', 'date'],
+            'motif' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $data['motif'] = $data['motif'] ?? null;
+        $contrat = $panne->contrat ?? $moto->contratEnCours;
+
+        if ($contrat && Carbon::parse($data['date_debut'])->startOfDay()->lt($contrat->date_debut->copy()->startOfDay())) {
+            throw ValidationException::withMessages([
+                'date_debut' => 'La panne ne peut pas commencer avant le début du contrat ('.$contrat->date_debut->format('d/m/Y').').',
+            ]);
+        }
+
+        if (
+            $panne->date_fin
+            && Carbon::parse($data['date_debut'])->startOfDay()->gt($panne->date_fin->copy()->startOfDay())
+        ) {
+            throw ValidationException::withMessages([
+                'date_debut' => 'La date de début ne peut pas être après la date de fin ('.$panne->date_fin->format('d/m/Y').').',
+            ]);
+        }
+
+        DB::transaction(function () use ($panne, $contrat, $data) {
+            $panne->update([
+                'date_debut' => $data['date_debut'],
+                'motif' => $data['motif'],
+            ]);
+
+            if ($contrat && $contrat->statut === Contrat::STATUT_EN_COURS) {
+                $contrat->oublierEcheancier();
+                if ($panne->date_fin) {
+                    $contrat->reporterEcheancesApresImmobilisation();
+                }
+            }
+        });
+
+        return back()->with('success', 'Date de début de panne mise à jour. Les échéances suspendues ont été recalculées.');
     }
 
     public function cloturerPanne(Request $request, Moto $moto)

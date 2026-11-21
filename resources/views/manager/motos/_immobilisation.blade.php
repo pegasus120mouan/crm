@@ -18,7 +18,42 @@
 @endif
 
 @if ($panne)
-  <p class="mb-3">Les paiements sont suspendus {{ $panne->periodeLibelle() }}. Indiquez le dernier jour immobilisé pour remettre la moto en service : les échéances de cette période sont reportées.</p>
+  <p class="mb-3">Les paiements sont suspendus {{ $panne->periodeLibelle() }}. Vous pouvez corriger la date de début, puis indiquer le dernier jour immobilisé pour remettre la moto en service.</p>
+  <form action="{{ route('manager.motos.panne.modifier', $moto) }}" method="POST" class="mb-4">
+    @csrf
+    @method('PUT')
+    <input type="hidden" name="_moto" value="{{ $moto->id }}">
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label" for="debut-panne-en-cours-{{ $moto->id }}">Date de début de panne</label>
+        <input
+          type="date"
+          id="debut-panne-en-cours-{{ $moto->id }}"
+          class="form-control @error('date_debut') is-invalid @enderror"
+          name="date_debut"
+          value="{{ $saisie ? old('date_debut', $panne->date_debut->format('Y-m-d')) : $panne->date_debut->format('Y-m-d') }}"
+          @if ($panne->contrat?->date_debut) min="{{ $panne->contrat->date_debut->format('Y-m-d') }}" @endif
+          @if ($panne->date_fin) max="{{ $panne->date_fin->format('Y-m-d') }}" @endif
+          required
+        >
+        @error('date_debut') <div class="invalid-feedback">{{ $message }}</div> @enderror
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" for="motif-panne-en-cours-{{ $moto->id }}">Motif</label>
+        <input
+          type="text"
+          id="motif-panne-en-cours-{{ $moto->id }}"
+          class="form-control"
+          name="motif"
+          value="{{ $saisie ? old('motif', $panne->motif) : $panne->motif }}"
+          maxlength="500"
+          placeholder="Ex : moteur, accident, atelier"
+        >
+      </div>
+    </div>
+    <button type="submit" class="btn btn-outline-primary">Enregistrer la date de panne</button>
+  </form>
+  <hr class="my-4">
   <form action="{{ route('manager.motos.panne.cloturer', $moto) }}" method="POST">
     @csrf
     @method('PATCH')

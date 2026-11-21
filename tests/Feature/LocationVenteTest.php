@@ -934,6 +934,52 @@ class LocationVenteTest extends TestCase
         $this->assertTrue($contrat->paiementsSuspendusLe(Carbon::parse('2026-10-30')));
     }
 
+    public function test_the_start_date_of_an_open_breakdown_can_be_updated(): void
+    {
+        Carbon::setTestNow('2026-10-30 10:00:00');
+        $contrat = $this->contrat([
+            'date_debut' => '2026-10-01',
+            'frequence' => 'hebdomadaire',
+            'montant_echeance' => 10000,
+            'prix_total' => 100000,
+        ]);
+        $moto = $contrat->moto;
+
+        $this->asManager()->post(route('manager.motos.panne', $moto), [
+            'date_debut' => '2026-10-20',
+            'statut' => Immobilisation::STATUT_EN_COURS,
+            'motif' => 'Moteur',
+        ])->assertRedirect();
+
+        $this->assertSame(2, $contrat->fresh()->echeancesEchues());
+
+        $this->asManager()->from(route('manager.motos.show', $moto))
+            ->put(route('manager.motos.panne.modifier', $moto), [
+                'date_debut' => '2026-09-15',
+                'motif' => 'Accident',
+            ])->assertSessionHasErrors('date_debut');
+
+        $this->asManager()->from(route('manager.motos.show', $moto))
+            ->put(route('manager.motos.panne.modifier', $moto), [
+                'date_debut' => '2026-10-10',
+                'motif' => 'Accident',
+            ])->assertRedirect(route('manager.motos.show', $moto))
+            ->assertSessionHas('success');
+
+        $panne = $moto->fresh()->immobilisationEnCours;
+        $this->assertNotNull($panne);
+        $this->assertSame('2026-10-10', $panne->date_debut->toDateString());
+        $this->assertSame('Accident', $panne->motif);
+        $this->assertSame(1, $contrat->fresh()->echeancesEchues());
+        $this->assertTrue($contrat->fresh()->paiementsSuspendusLe(Carbon::parse('2026-10-15')));
+
+        $this->asManager()->get(route('manager.motos.show', $moto))
+            ->assertOk()
+            ->assertSee('Date de début de panne')
+            ->assertSee('Enregistrer la date de panne')
+            ->assertSee('depuis le 10/10/2026');
+    }
+
     public function test_a_moto_expense_is_added_to_the_amount_to_repay_and_can_extend_the_contract(): void
     {
         $contrat = $this->contrat([

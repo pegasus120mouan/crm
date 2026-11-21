@@ -48,6 +48,7 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::post('/motos/{moto}/photos', [Manager\MotoController::class, 'enregistrerPhotos'])->name('motos.photos');
     Route::post('/motos/{moto}/papiers', [Manager\MotoController::class, 'enregistrerPapiers'])->name('motos.papiers');
     Route::post('/motos/{moto}/panne', [Manager\MotoController::class, 'declarerPanne'])->name('motos.panne');
+    Route::put('/motos/{moto}/panne', [Manager\MotoController::class, 'modifierPanne'])->name('motos.panne.modifier');
     Route::patch('/motos/{moto}/panne', [Manager\MotoController::class, 'cloturerPanne'])->name('motos.panne.cloturer');
     Route::put('/motos/{moto}', [Manager\MotoController::class, 'update'])->name('motos.update');
     Route::delete('/motos/{moto}', [Manager\MotoController::class, 'destroy'])->name('motos.destroy');
