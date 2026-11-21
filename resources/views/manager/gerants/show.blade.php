@@ -136,6 +136,8 @@
       </div>
     </div>
   </div>
+
+  @include('manager._confirmation')
 @endsection
 
 @push('scripts')
