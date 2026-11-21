@@ -68,6 +68,12 @@
                 <div class="text-truncate">Liste des livreurs</div>
               </a>
             </li>
+            <li class="menu-item {{ request()->routeIs('manager.gerants.*') ? 'active' : '' }}">
+              <a href="{{ route('manager.gerants.index') }}" class="menu-link">
+                <i class="menu-icon tf-icons bx bx-user-circle"></i>
+                <div class="text-truncate">Liste des gérants</div>
+              </a>
+            </li>
             <li class="menu-item {{ request()->routeIs('manager.motos.*') ? 'active' : '' }}">
               <a href="{{ route('manager.motos.index') }}" class="menu-link">
                 <i class="menu-icon tf-icons bx bx-cycling"></i>

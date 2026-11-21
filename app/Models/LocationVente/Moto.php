@@ -3,6 +3,7 @@
 namespace App\Models\LocationVente;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -25,6 +26,8 @@ class Moto extends Model
 
     public const STATUT_EN_LOCATION = 'en_location';
 
+    public const STATUT_CHEZ_GERANT = 'chez_gerant';
+
     public const STATUT_MAINTENANCE = 'maintenance';
 
     public const STATUT_EN_PANNE = 'en_panne';
@@ -34,13 +37,14 @@ class Moto extends Model
     public const STATUTS = [
         self::STATUT_DISPONIBLE => 'Disponible',
         self::STATUT_EN_LOCATION => 'En location-vente',
+        self::STATUT_CHEZ_GERANT => 'Confiée à un gérant',
         self::STATUT_EN_PANNE => 'En panne',
         self::STATUT_MAINTENANCE => 'En maintenance',
         self::STATUT_CEDEE => 'Cédée (hors parc)',
     ];
 
     /**
-     * Statuts modifiables à la main ; les autres sont gérés par les contrats.
+     * Statuts modifiables à la main ; les autres sont gérés par les contrats / confiage.
      */
     public const STATUTS_MANUELS = [self::STATUT_DISPONIBLE, self::STATUT_MAINTENANCE];
 
@@ -58,6 +62,7 @@ class Moto extends Model
         'prix_achat',
         'date_acquisition',
         'statut',
+        'gerant_id',
         'notes',
     ];
 
@@ -194,6 +199,27 @@ class Moto extends Model
         );
     }
 
+    public function gerant(): BelongsTo
+    {
+        return $this->belongsTo(Gerant::class, 'gerant_id');
+    }
+
+    public function paiementsGerant(): HasMany
+    {
+        return $this->hasMany(GerantPaiement::class, 'moto_id');
+    }
+
+    public function peutEtreConfieeAUnGerant(): bool
+    {
+        return $this->statut === self::STATUT_DISPONIBLE
+            && ! $this->contrats()->where('statut', Contrat::STATUT_EN_COURS)->exists();
+    }
+
+    public function estChezGerant(): bool
+    {
+        return $this->statut === self::STATUT_CHEZ_GERANT && $this->gerant_id !== null;
+    }
+
     public function peutEtreDeclareeEnPanne(): bool
     {
         return ! in_array($this->statut, [self::STATUT_CEDEE, self::STATUT_EN_PANNE], true);
@@ -201,9 +227,11 @@ class Moto extends Model
 
     public function statutApresPanne(): string
     {
-        return $this->contrats()->where('statut', Contrat::STATUT_EN_COURS)->exists()
-            ? self::STATUT_EN_LOCATION
-            : self::STATUT_DISPONIBLE;
+        if ($this->contrats()->where('statut', Contrat::STATUT_EN_COURS)->exists()) {
+            return self::STATUT_EN_LOCATION;
+        }
+
+        return $this->gerant_id ? self::STATUT_CHEZ_GERANT : self::STATUT_DISPONIBLE;
     }
 
     public function contratActuel(): HasOne
@@ -264,6 +292,7 @@ class Moto extends Model
     {
         return match ($this->statut) {
             self::STATUT_EN_LOCATION => 'En Utilisation',
+            self::STATUT_CHEZ_GERANT => 'Chez un gérant',
             self::STATUT_MAINTENANCE, self::STATUT_EN_PANNE => 'En Panne',
             self::STATUT_DISPONIBLE => 'Disponible',
             self::STATUT_CEDEE => 'Cédée',
@@ -275,6 +304,7 @@ class Moto extends Model
     {
         return match ($this->statut) {
             self::STATUT_EN_LOCATION => 'bg-success',
+            self::STATUT_CHEZ_GERANT => 'bg-info',
             self::STATUT_MAINTENANCE, self::STATUT_EN_PANNE => 'bg-danger',
             self::STATUT_DISPONIBLE => 'bg-primary',
             default => 'bg-secondary',
@@ -286,6 +316,7 @@ class Moto extends Model
         return match ($this->statut) {
             self::STATUT_DISPONIBLE => 'success',
             self::STATUT_EN_LOCATION => 'primary',
+            self::STATUT_CHEZ_GERANT => 'info',
             self::STATUT_EN_PANNE => 'danger',
             self::STATUT_MAINTENANCE => 'warning',
             default => 'secondary',

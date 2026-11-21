@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
 use App\Models\LocationVente\Contrat;
+use App\Models\LocationVente\Gerant;
+use App\Models\LocationVente\GerantPaiement;
 use App\Models\LocationVente\Immobilisation;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
 use App\Models\LocationVente\MotoDocument;
 use App\Models\LocationVente\MotoPhoto;
+use App\Models\LocationVente\Paiement;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -41,7 +44,7 @@ class MotoController extends Controller
         $filtres['statut'] = $statut;
 
         $motos = Moto::query()
-            ->with(['contratActuel.livreur', 'contratEnCours.livreur', 'immobilisationEnCours', 'photos', 'documents'])
+            ->with(['contratActuel.livreur', 'contratEnCours.livreur', 'immobilisationEnCours', 'gerant', 'photos', 'documents'])
             ->withSum('depenses', 'montant')
             ->withSum('paiements', 'montant')
             ->when($modele !== '', fn ($query) => $query->where('modele', 'like', $this->contient($modele)))
@@ -68,6 +71,7 @@ class MotoController extends Controller
             'parc' => $parStatut->except(Moto::STATUT_CEDEE)->sum(),
             'disponibles' => (int) ($parStatut[Moto::STATUT_DISPONIBLE] ?? 0),
             'en_location' => (int) ($parStatut[Moto::STATUT_EN_LOCATION] ?? 0),
+            'chez_gerant' => (int) ($parStatut[Moto::STATUT_CHEZ_GERANT] ?? 0),
             'maintenance' => (int) ($parStatut[Moto::STATUT_MAINTENANCE] ?? 0),
             'en_panne' => (int) ($parStatut[Moto::STATUT_EN_PANNE] ?? 0),
             'cedees' => (int) ($parStatut[Moto::STATUT_CEDEE] ?? 0),
@@ -75,13 +79,14 @@ class MotoController extends Controller
 
         $livreursDisponibles = Livreur::query()->peuventRecevoirUneMoto()->get();
         $motosDisponibles = Moto::query()->disponibles()->get();
+        $gerantsActifs = Gerant::query()->where('statut', true)->orderBy('nom')->orderBy('prenoms')->get();
         $livreursRecherche = Livreur::query()
             ->whereHas('contrats', fn ($contrat) => $contrat->whereIn('statut', [Contrat::STATUT_EN_COURS, Contrat::STATUT_SOLDE]))
             ->orderBy('nom')
             ->orderBy('prenoms')
             ->get();
 
-        return view('manager.motos.index', compact('motos', 'stats', 'statut', 'filtres', 'livreursDisponibles', 'motosDisponibles', 'livreursRecherche'));
+        return view('manager.motos.index', compact('motos', 'stats', 'statut', 'filtres', 'livreursDisponibles', 'motosDisponibles', 'gerantsActifs', 'livreursRecherche'));
     }
 
     private function contient(string $valeur): string
@@ -121,13 +126,85 @@ class MotoController extends Controller
         $moto->load([
             'photos',
             'documents',
+            'gerant',
             'immobilisations.contrat',
             'depenses' => fn ($query) => $query->with('contrat.livreur')->orderByDesc('date_depense')->orderByDesc('id'),
             'paiements' => fn ($query) => $query->with('contrat.livreur')->orderByDesc('date_paiement')->orderByDesc('location_vente_paiements.id'),
+            'paiementsGerant' => fn ($query) => $query->orderByDesc('date_paiement')->orderByDesc('id'),
         ]);
         $bilan = $moto->bilanFinancier();
+        $gerantsActifs = Gerant::query()->where('statut', true)->orderBy('nom')->orderBy('prenoms')->get();
 
-        return view('manager.motos.show', compact('moto', 'bilan'));
+        return view('manager.motos.show', compact('moto', 'bilan', 'gerantsActifs'));
+    }
+
+    public function confierGerant(Request $request, Moto $moto)
+    {
+        $data = $request->validate([
+            'gerant_id' => ['required', 'integer', 'exists:location_vente_gerants,id'],
+        ]);
+
+        if (! $moto->peutEtreConfieeAUnGerant()) {
+            throw ValidationException::withMessages([
+                'gerant_id' => 'Seule une moto disponible, sans contrat en cours, peut être confiée à un gérant.',
+            ]);
+        }
+
+        $gerant = Gerant::query()->findOrFail($data['gerant_id']);
+        if (! $gerant->estActif()) {
+            throw ValidationException::withMessages([
+                'gerant_id' => 'Ce gérant est inactif.',
+            ]);
+        }
+
+        $moto->update([
+            'gerant_id' => $gerant->id,
+            'statut' => Moto::STATUT_CHEZ_GERANT,
+        ]);
+
+        return back()->with('success', 'Moto confiée à '.$gerant->nomComplet().'. Elle n’est plus disponible pour un contrat location-vente.');
+    }
+
+    public function restituerGerant(Moto $moto)
+    {
+        if (! $moto->estChezGerant()) {
+            return back()->with('error', 'Cette moto n’est pas confiée à un gérant.');
+        }
+
+        $moto->update([
+            'gerant_id' => null,
+            'statut' => Moto::STATUT_DISPONIBLE,
+        ]);
+
+        return back()->with('success', 'Moto restituée : elle est de nouveau disponible.');
+    }
+
+    public function enregistrerPaiementGerant(Request $request, Moto $moto)
+    {
+        if (! $moto->estChezGerant()) {
+            return back()->with('error', 'Les paiements gérant ne concernent que les motos confiées.');
+        }
+
+        $data = $request->validate([
+            'montant' => ['required', 'integer', 'min:1'],
+            'date_paiement' => ['required', 'date', 'before_or_equal:today'],
+            'mode' => ['required', Rule::in(Paiement::MODES)],
+            'reference' => ['nullable', 'string', 'max:100'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        GerantPaiement::create([
+            'gerant_id' => $moto->gerant_id,
+            'moto_id' => $moto->id,
+            'montant' => $data['montant'],
+            'date_paiement' => $data['date_paiement'],
+            'mode' => $data['mode'],
+            'reference' => $data['reference'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'enregistre_par' => $request->session()->get('utilisateur.id'),
+        ]);
+
+        return back()->with('success', 'Paiement du gérant enregistré.');
     }
 
     public function declarerPanne(Request $request, Moto $moto)

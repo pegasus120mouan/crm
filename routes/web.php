@@ -39,6 +39,13 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::delete('/livreurs/{livreur}', [Manager\LivreurController::class, 'destroy'])->name('livreurs.destroy');
     Route::patch('/livreurs/{livreur}/statut', [Manager\LivreurController::class, 'toggleStatut'])->name('livreurs.toggle-statut');
 
+    Route::get('/gerants', [Manager\GerantController::class, 'index'])->name('gerants.index');
+    Route::post('/gerants', [Manager\GerantController::class, 'store'])->name('gerants.store');
+    Route::get('/gerants/{gerant}/photo', [Manager\GerantController::class, 'photo'])->name('gerants.photo');
+    Route::get('/gerants/{gerant}', [Manager\GerantController::class, 'show'])->name('gerants.show');
+    Route::put('/gerants/{gerant}', [Manager\GerantController::class, 'update'])->name('gerants.update');
+    Route::delete('/gerants/{gerant}', [Manager\GerantController::class, 'destroy'])->name('gerants.destroy');
+
     Route::get('/motos', [Manager\MotoController::class, 'index'])->name('motos.index');
     Route::post('/motos', [Manager\MotoController::class, 'store'])->name('motos.store');
     Route::get('/motos/{moto}/photos/{face}', [Manager\MotoController::class, 'photo'])
@@ -50,6 +57,9 @@ Route::middleware('crm.role:manager')->prefix('manager')->name('manager.')->grou
     Route::post('/motos/{moto}/panne', [Manager\MotoController::class, 'declarerPanne'])->name('motos.panne');
     Route::put('/motos/{moto}/panne', [Manager\MotoController::class, 'modifierPanne'])->name('motos.panne.modifier');
     Route::patch('/motos/{moto}/panne', [Manager\MotoController::class, 'cloturerPanne'])->name('motos.panne.cloturer');
+    Route::post('/motos/{moto}/gerant', [Manager\MotoController::class, 'confierGerant'])->name('motos.gerant.confier');
+    Route::delete('/motos/{moto}/gerant', [Manager\MotoController::class, 'restituerGerant'])->name('motos.gerant.restituer');
+    Route::post('/motos/{moto}/gerant/paiements', [Manager\MotoController::class, 'enregistrerPaiementGerant'])->name('motos.gerant.paiements');
     Route::put('/motos/{moto}', [Manager\MotoController::class, 'update'])->name('motos.update');
     Route::delete('/motos/{moto}', [Manager\MotoController::class, 'destroy'])->name('motos.destroy');
 

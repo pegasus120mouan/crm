@@ -23,6 +23,7 @@
       ['Dans le parc', $stats['parc'], 'bx-cycling', 'primary', 'parc'],
       ['Disponibles', $stats['disponibles'], 'bx-check-circle', 'success', 'disponible'],
       ['En location-vente', $stats['en_location'], 'bx-transfer', 'info', 'en_location'],
+      ['Chez un gérant', $stats['chez_gerant'], 'bx-user-circle', 'info', 'chez_gerant'],
       ['En panne', $stats['en_panne'], 'bx-error', 'danger', 'en_panne'],
       ['En maintenance', $stats['maintenance'], 'bx-wrench', 'warning', 'maintenance'],
       ['Cédées (hors parc)', $stats['cedees'], 'bx-key', 'secondary', 'cedee'],
@@ -178,6 +179,9 @@
               </td>
               <td class="moto-statut">
                 <span class="badge bg-label-{{ $moto->couleurStatut() }}">{{ $moto->libelleStatut() }}</span>
+                @if ($moto->gerant && $moto->statut === \App\Models\LocationVente\Moto::STATUT_CHEZ_GERANT)
+                  <small class="moto-statut-detail d-block">{{ $moto->gerant->nomComplet() }}</small>
+                @endif
                 @if ($panne = $moto->immobilisationEnCours)
                   <small class="moto-statut-detail d-block">{{ $panne->libelleStatut() }} · {{ $panne->periodeLibelle() }}</small>
                   @if ($panne->motif)

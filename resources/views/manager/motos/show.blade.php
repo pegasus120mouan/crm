@@ -257,6 +257,17 @@
         </div>
       </div>
 
+      @if ($moto->peutEtreConfieeAUnGerant() || $moto->estChezGerant())
+        <div class="card mb-4">
+          <div class="card-header">
+            <h6 class="mb-0">Gérant</h6>
+          </div>
+          <div class="card-body">
+            @include('manager.motos._gerant', ['moto' => $moto, 'gerantsActifs' => $gerantsActifs ?? collect()])
+          </div>
+        </div>
+      @endif
+
       @if ($moto->peutEtreDeclareeEnPanne() || $moto->immobilisations->isNotEmpty())
         <div class="card mb-4">
           <div class="card-header d-flex justify-content-between align-items-center">

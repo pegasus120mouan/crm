@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\LocationVente\Contrat;
 use App\Models\LocationVente\Depense;
+use App\Models\LocationVente\Gerant;
+use App\Models\LocationVente\GerantPaiement;
 use App\Models\LocationVente\Immobilisation;
 use App\Models\LocationVente\Livreur;
 use App\Models\LocationVente\Moto;
@@ -48,6 +50,8 @@ class LocationVenteTest extends TestCase
             'database/migrations/2026_11_14_133750_create_location_vente_moto_documents_table.php',
             'database/migrations/2026_11_18_000008_create_location_vente_immobilisations_table.php',
             'database/migrations/2026_11_18_000009_create_location_vente_depenses_table.php',
+            'database/migrations/2026_11_21_000010_create_location_vente_gerants_table.php',
+            'database/migrations/2026_11_21_000011_add_photo_to_location_vente_gerants_table.php',
         ]]);
     }
 
@@ -934,6 +938,50 @@ class LocationVenteTest extends TestCase
         $this->assertSame('2026-12-24', $contrat->date_fin->toDateString());
         $this->assertFalse($contrat->paiementsSuspendusLe(Carbon::parse('2026-11-03')));
         $this->assertTrue($contrat->paiementsSuspendusLe(Carbon::parse('2026-10-30')));
+    }
+
+    public function test_a_moto_can_be_entrusted_to_a_manager_without_creating_a_contract(): void
+    {
+        $moto = Moto::create(['marque' => 'PNE', 'modele' => 'PNE50', 'immatriculation' => 'ZZ 1111 CI', 'statut' => Moto::STATUT_DISPONIBLE]);
+
+        $this->asManager()->post(route('manager.gerants.store'), [
+            'nom' => 'Traore',
+            'prenoms' => 'Ali',
+            'contact' => '0700000001',
+            'statut' => 1,
+            'photo' => UploadedFile::fake()->image('gerant.jpg', 200, 200),
+        ])->assertRedirect();
+
+        $gerant = Gerant::query()->firstOrFail();
+        $this->assertNotEmpty($gerant->photo);
+        $this->asManager()->get(route('manager.gerants.photo', $gerant))->assertOk();
+
+        $this->asManager()->post(route('manager.motos.gerant.confier', $moto), [
+            'gerant_id' => $gerant->id,
+        ])->assertRedirect();
+
+        $moto->refresh();
+        $this->assertSame(Moto::STATUT_CHEZ_GERANT, $moto->statut);
+        $this->assertSame($gerant->id, $moto->gerant_id);
+        $this->assertSame(0, Contrat::query()->where('moto_id', $moto->id)->count());
+
+        $this->asManager()->post('/manager/contrats', $this->conditions(
+            Livreur::create(['nom' => 'Kone', 'prenoms' => 'Ibrahim', 'contact' => '0701020304', 'statut' => true])->id,
+            $moto->id
+        ))->assertSessionHasErrors('moto_id');
+
+        $this->asManager()->post(route('manager.motos.gerant.paiements', $moto), [
+            'montant' => 15000,
+            'date_paiement' => '2026-10-03',
+            'mode' => 'Espèces',
+        ])->assertRedirect();
+
+        $this->assertSame(1, GerantPaiement::query()->where('moto_id', $moto->id)->count());
+        $this->assertSame(0, Paiement::query()->count());
+
+        $this->asManager()->delete(route('manager.motos.gerant.restituer', $moto))->assertRedirect();
+        $this->assertSame(Moto::STATUT_DISPONIBLE, $moto->fresh()->statut);
+        $this->assertNull($moto->fresh()->gerant_id);
     }
 
     public function test_the_start_date_of_an_open_breakdown_can_be_updated(): void
