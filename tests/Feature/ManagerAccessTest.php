@@ -167,6 +167,7 @@ class ManagerAccessTest extends TestCase
                 '510 000 FCFA',
                 'Somme des marges',
                 '-50 000 FCFA',
+                'Total à payer − acquisition − dépenses',
                 'Payé ce mois',
                 '40 000 FCFA',
                 'Payé cette année',

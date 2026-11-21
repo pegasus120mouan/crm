@@ -392,11 +392,35 @@
     cursor: default;
   }
   .livreur-photo img { object-fit: cover; display: block; }
+  .champ-auto {
+    background-color: #f3f4f6 !important;
+    color: #6c757d;
+  }
 </style>
 @endpush
 
 @push('scripts')
 <script>
+  function appliquerPrixDuType(select) {
+    var form = select.closest('form');
+    if (!form) return;
+    var champ = form.querySelector('.js-prix-acquisition');
+    var source = form.querySelector('.js-prix-acquisition-source');
+    if (!champ || !source) return;
+    var option = select.options[select.selectedIndex];
+    var cout = option && option.dataset.cout ? parseInt(option.dataset.cout, 10) : 0;
+    var nom = option && option.dataset.nom ? option.dataset.nom : '';
+    champ.value = new Intl.NumberFormat('fr-FR').format(cout || 0);
+    source.textContent = nom ? 'Selon le type ' + nom + '.' : 'Choisissez un type de moto.';
+  }
+
+  document.querySelectorAll('.js-type-moto').forEach(appliquerPrixDuType);
+  document.addEventListener('change', function (event) {
+    if (event.target.classList && event.target.classList.contains('js-type-moto')) {
+      appliquerPrixDuType(event.target);
+    }
+  });
+
   document.addEventListener('change', function (event) {
     var input = event.target;
     if (!input.classList || !input.classList.contains('js-input-photo-moto') || !input.files || !input.files[0]) return;

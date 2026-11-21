@@ -92,14 +92,27 @@ class LocationVenteTest extends TestCase
         ]);
 
         $moto = Moto::firstOrFail();
+        $type = TypeMoto::query()->create([
+            'nom' => 'Haojue 125',
+            'cout_acquisition' => 850000,
+            'marge' => 0,
+            'montant_journalier' => 4000,
+        ]);
         $this->asManager()->put(route('manager.motos.update', $moto), [
             'marque' => 'Haojue',
             'modele' => 'HJ125',
             'immatriculation' => 'AB 1234 CI',
-            'prix_achat' => 850000,
+            'type_moto_id' => $type->id,
+            'prix_achat' => 1,
             'statut' => 'disponible',
         ])->assertSessionHasNoErrors();
         $this->assertSame(850000, $moto->fresh()->prix_achat);
+
+        $this->asManager()->get('/manager/motos')
+            ->assertOk()
+            ->assertSee('js-prix-acquisition', false)
+            ->assertSee('Selon le type Haojue 125', false)
+            ->assertSee('readonly', false);
     }
 
     public function test_moto_photos_of_every_face_fuel_and_engine_size_are_saved(): void

@@ -33,10 +33,10 @@
   </div>
   <div class="col-md-6">
     <label class="form-label">Type de moto</label>
-    <select class="form-select" name="type_moto_id">
+    <select class="form-select js-type-moto" name="type_moto_id">
       <option value="">—</option>
       @foreach ($typesMoto as $type)
-        <option value="{{ $type->id }}" @selected((string) old('type_moto_id', $moto->type_moto_id ?? '') === (string) $type->id)>{{ $type->nom }}</option>
+        <option value="{{ $type->id }}" data-cout="{{ (int) $type->cout_acquisition }}" data-nom="{{ $type->nom }}" @selected((string) old('type_moto_id', $moto->type_moto_id ?? '') === (string) $type->id)>{{ $type->nom }}</option>
       @endforeach
     </select>
     <small class="text-muted">Créés dans le menu Type de moto.</small>
@@ -96,14 +96,13 @@
   </div>
   <div class="col-md-4">
     <label class="form-label">Prix d'acquisition (FCFA)</label>
-    <input
-      type="number"
-      class="form-control"
-      name="prix_achat"
-      value="{{ old('prix_achat', $moto?->prix_achat ?? 0) }}"
-      min="0"
-      step="1"
-      placeholder="0">
-    <small class="text-muted">Coût d'achat de la moto pour le parc. Par défaut 0.</small>
+    <input type="text" class="form-control champ-auto js-prix-acquisition" value="{{ number_format((int) ($typesMoto->firstWhere('id', (int) old('type_moto_id', $moto->type_moto_id ?? 0))?->cout_acquisition ?? 0), 0, ',', ' ') }}" readonly tabindex="-1">
+    <small class="text-muted js-prix-acquisition-source">
+      @if ($nomType = $typesMoto->firstWhere('id', (int) old('type_moto_id', $moto->type_moto_id ?? 0))?->nom)
+        Selon le type {{ $nomType }}.
+      @else
+        Choisissez un type de moto.
+      @endif
+    </small>
   </div>
 </div>

@@ -533,7 +533,6 @@ class MotoController extends Controller
             'annee' => ['nullable', 'integer', 'min:1990', 'max:'.(now()->year + 1)],
             'carburant' => ['nullable', Rule::in(array_keys(Moto::CARBURANTS))],
             'cylindree' => ['nullable', 'integer', 'min:1', 'max:3000'],
-            'prix_achat' => ['nullable', 'integer', 'min:0'],
             'date_acquisition' => ['nullable', 'date'],
             'statut' => [$moto ? 'nullable' : 'required', Rule::in(Moto::STATUTS_MANUELS)],
             'photos' => ['nullable', 'array'],
@@ -543,7 +542,10 @@ class MotoController extends Controller
             ...$messagesPhotos,
         ]);
 
-        $validated['prix_achat'] = (int) ($validated['prix_achat'] ?? 0);
+        $typeId = $validated['type_moto_id'] ?? null;
+        $validated['prix_achat'] = $typeId
+            ? (int) TypeMoto::query()->whereKey($typeId)->value('cout_acquisition')
+            : 0;
 
         return collect($validated)->except('photos')->all();
     }

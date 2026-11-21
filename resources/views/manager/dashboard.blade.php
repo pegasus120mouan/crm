@@ -122,7 +122,7 @@
                 <div>
                   <small class="d-block">Somme des marges</small>
                   <strong>{{ $fcfa($locationVente['marges']) }}</strong>
-                  <small class="d-block text-body-secondary">Total à payer − coût d'acquisition</small>
+                  <small class="d-block text-body-secondary">Total à payer − acquisition − dépenses</small>
                 </div>
               </a>
             </div>
